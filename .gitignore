@@ -25,3 +25,7 @@ Desktop.ini
 .venv/
 __pycache__/
 *.py[cod]
+
+# REA 分析进程的本地通信文件与运行日志，不属于研究证据。
+docs/research/reports/**/*.sock
+docs/research/reports/**/server.stderr

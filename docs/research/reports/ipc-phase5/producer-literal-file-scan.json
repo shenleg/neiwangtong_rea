@@ -1,0 +1,90 @@
+{
+  "method": "Python isolated mode, literal contiguous file-byte search",
+  "scope": "Only top-level shipped .exe/.dll files in explicitly selected extracted application directory",
+  "limitations": [
+    "Not a REA Evidence record.",
+    "No disassembly or computed-value analysis; absence of literal bytes does not establish absence of producer.",
+    "Offsets are file offsets, not virtual addresses.",
+    "No file execution or user database reads."
+  ],
+  "artifacts": [
+    {
+      "path": "/root/reverse-lab/extracted/app/CrashRpt.exe",
+      "size": 314256,
+      "sha256": "a28a7e85d678f1f20ba447c35a2dea2d9d23416c9af03ff32e60b6dc7a7d80fa",
+      "matches": {
+        "dwData-u32le": [],
+        "selector-user_id-utf8": [],
+        "selector-group_id-utf8": [],
+        "selector-user_id-utf16le": [],
+        "selector-group_id-utf16le": []
+      }
+    },
+    {
+      "path": "/root/reverse-lab/extracted/app/LiveUpdate.exe",
+      "size": 604664,
+      "sha256": "1e20e44fdbbb65f6c20cfa41a99b665c1a5ca6c4814c3219cdab99c26f7647b6",
+      "matches": {
+        "dwData-u32le": [],
+        "selector-user_id-utf8": [],
+        "selector-group_id-utf8": [],
+        "selector-user_id-utf16le": [],
+        "selector-group_id-utf16le": []
+      }
+    },
+    {
+      "path": "/root/reverse-lab/extracted/app/Remote.dll",
+      "size": 1125776,
+      "sha256": "d5093fe0f54c6b67b07b82f4d82b2510147f8afc00c8bace429ab07c3859c202",
+      "matches": {
+        "dwData-u32le": [],
+        "selector-user_id-utf8": [],
+        "selector-group_id-utf8": [],
+        "selector-user_id-utf16le": [],
+        "selector-group_id-utf16le": []
+      }
+    },
+    {
+      "path": "/root/reverse-lab/extracted/app/ShellExt32.dll",
+      "size": 146832,
+      "sha256": "ebe4720b133134fd39ce9afbcbd5aa70006afec246b05ddf4d9438e64942fad8",
+      "matches": {
+        "dwData-u32le": [],
+        "selector-user_id-utf8": [],
+        "selector-group_id-utf8": [],
+        "selector-user_id-utf16le": [],
+        "selector-group_id-utf16le": []
+      }
+    },
+    {
+      "path": "/root/reverse-lab/extracted/app/ShellExt64.dll",
+      "size": 163728,
+      "sha256": "7a74a549b2da5eb13af77a32b2070101c225ed7fdae1e3ce7d314659653979a6",
+      "matches": {
+        "dwData-u32le": [],
+        "selector-user_id-utf8": [],
+        "selector-group_id-utf8": [],
+        "selector-user_id-utf16le": [],
+        "selector-group_id-utf16le": []
+      }
+    },
+    {
+      "path": "/root/reverse-lab/extracted/app/ShiYeLine.exe",
+      "size": 7416176,
+      "sha256": "e7caef3fe744f9fe6ba90dd1d53b7e64241cb54020a8bf37be5e756e2fe881b1",
+      "matches": {
+        "dwData-u32le": [
+          "0x4951a"
+        ],
+        "selector-user_id-utf8": [],
+        "selector-group_id-utf8": [],
+        "selector-user_id-utf16le": [
+          "0x5d01b0"
+        ],
+        "selector-group_id-utf16le": [
+          "0x5d01d8"
+        ]
+      }
+    }
+  ]
+}
