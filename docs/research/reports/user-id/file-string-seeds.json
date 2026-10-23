@@ -1,0 +1,126 @@
+{
+  "purpose": "只读发行样本字面串线索；不证明函数或字段语义",
+  "sha256": "e7caef3fe744f9fe6ba90dd1d53b7e64241cb54020a8bf37be5e756e2fe881b1",
+  "rows": [
+    {
+      "file_offset": "0x5a734c",
+      "address": "0x9a874c",
+      "text": "SelectUserItem.xml"
+    },
+    {
+      "file_offset": "0x5b3528",
+      "address": "0x9b4928",
+      "text": "UserItem2.xml"
+    },
+    {
+      "file_offset": "0x5b3544",
+      "address": "0x9b4944",
+      "text": "CUserItem"
+    },
+    {
+      "file_offset": "0x5b40a4",
+      "address": "0x9b54a4",
+      "text": "UserName"
+    },
+    {
+      "file_offset": "0x5b5c94",
+      "address": "0x9b7094",
+      "text": "IDS_MAIL_USERNAME_EMPTY_TIPS"
+    },
+    {
+      "file_offset": "0x5b66ec",
+      "address": "0x9b7aec",
+      "text": "UserItemMenu.xml"
+    },
+    {
+      "file_offset": "0x5b6710",
+      "address": "0x9b7b10",
+      "text": "UserItem.xml"
+    },
+    {
+      "file_offset": "0x5bc080",
+      "address": "0x9bd480",
+      "text": "IDS_USER_ID_FORMAT"
+    },
+    {
+      "file_offset": "0x5bc118",
+      "address": "0x9bd518",
+      "text": "IDS_COPY_USER_ID_SUCCESS"
+    },
+    {
+      "file_offset": "0x5be4d6",
+      "address": "0x9bf8d6",
+      "text": "TUserNameCardDialog.xml"
+    },
+    {
+      "file_offset": "0x5ca7e8",
+      "address": "0x9cbbe8",
+      "text": "SearchResultUserItem.xml"
+    },
+    {
+      "file_offset": "0x5cb7b0",
+      "address": "0x9ccbb0",
+      "text": "UserItem3.xml"
+    },
+    {
+      "file_offset": "0x5cd3b8",
+      "address": "0x9ce7b8",
+      "text": "IpMsgUserItem.xml"
+    },
+    {
+      "file_offset": "0x5d01b0",
+      "address": "0x9d15b0",
+      "text": "user_id"
+    },
+    {
+      "file_offset": "0x5d028c",
+      "address": "0x9d168c",
+      "text": "\\UserApp.xml"
+    },
+    {
+      "file_offset": "0x5d0464",
+      "address": "0x9d1864",
+      "text": "\\UserEmotion.xml"
+    },
+    {
+      "file_offset": "0x5d39be",
+      "address": "0x9d4dbe",
+      "text": "\\UserChatLayout.xml"
+    },
+    {
+      "file_offset": "0x5e1c94",
+      "address": "0x9e3094",
+      "text": "PeerUserId"
+    },
+    {
+      "file_offset": "0x5e206c",
+      "address": "0x9e346c",
+      "text": "ToUserId"
+    },
+    {
+      "file_offset": "0x5e22b8",
+      "address": "0x9e36b8",
+      "text": "ToUserName"
+    },
+    {
+      "file_offset": "0x5e22d0",
+      "address": "0x9e36d0",
+      "text": "FromUserName"
+    },
+    {
+      "file_offset": "0x5e22ec",
+      "address": "0x9e36ec",
+      "text": "FromUserId"
+    },
+    {
+      "file_offset": "0x5e3024",
+      "address": "0x9e4424",
+      "text": "UserId"
+    },
+    {
+      "file_offset": "0x5e398c",
+      "address": "0x9e4d8c",
+      "text": "SYL_USER_ID"
+    }
+  ]
+}

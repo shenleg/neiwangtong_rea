@@ -1,0 +1,83 @@
+{
+  "scope": "只验证 OrgStruct 合成 schema、XML 子元素和名称唯一匹配；未验证真实数据库 codec 或 Windows 行为",
+  "sqlite_version": "3.46.1",
+  "cases": [
+    {
+      "case": "unique",
+      "passed": true
+    },
+    {
+      "case": "type_filter",
+      "passed": true
+    },
+    {
+      "case": "missing",
+      "passed": true
+    },
+    {
+      "case": "same_name",
+      "passed": true
+    },
+    {
+      "case": "case_sensitive",
+      "passed": true
+    },
+    {
+      "case": "no_trim",
+      "passed": true
+    },
+    {
+      "case": "trailing_space",
+      "passed": true
+    },
+    {
+      "case": "xml_entities",
+      "passed": true
+    },
+    {
+      "case": "quote",
+      "passed": true
+    },
+    {
+      "case": "null_id",
+      "passed": true
+    },
+    {
+      "case": "empty_id",
+      "passed": true
+    },
+    {
+      "case": "embedded_nul_id",
+      "passed": true
+    },
+    {
+      "case": "malformed_xml",
+      "passed": true
+    },
+    {
+      "case": "duplicate_name_nodes",
+      "passed": true
+    },
+    {
+      "case": "missing_name_node",
+      "passed": true
+    },
+    {
+      "case": "id_not_prikey",
+      "passed": true
+    },
+    {
+      "case": "remark_is_not_canonical_name",
+      "passed": true
+    },
+    {
+      "case": "readonly_rejects_write",
+      "passed": true
+    }
+  ],
+  "passed": 18,
+  "target_executed": false,
+  "real_database_read": false,
+  "group_member_source_used": false,
+  "ipc_sent": false
+}
