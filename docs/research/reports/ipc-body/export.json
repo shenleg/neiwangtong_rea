@@ -1,0 +1,20 @@
+{
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"result\":{\"path\":\"/root/orca/projects/neiwangtong_rea/docs/research/reports/ipc-body/body-evidence.json\",\"bytes\":909431,\"records\":77,\"unknowns\":0}}"
+      }
+    ],
+    "structuredContent": {
+      "result": {
+        "path": "/root/orca/projects/neiwangtong_rea/docs/research/reports/ipc-body/body-evidence.json",
+        "bytes": 909431,
+        "records": 77,
+        "unknowns": 0
+      }
+    }
+  },
+  "jsonrpc": "2.0",
+  "id": 81
+}
