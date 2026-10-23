@@ -4,7 +4,7 @@ package ipc
 import "fmt"
 
 const (
-	// Message 是用户明确要求再次确认的固定正文，不接受任意文本。
+	// Message 是群与用户发送共用的固定实验正文，不接受任意文本。
 	Message = "NWT-GW-AUTH-TEST-0001"
 	// SampleSHA256 是已静态分析的客户端文件摘要，运行前必须完全匹配。
 	SampleSHA256   = "e7caef3fe744f9fe6ba90dd1d53b7e64241cb54020a8bf37be5e756e2fe881b1"
@@ -15,19 +15,25 @@ const (
 	payloadSize = bodyOffset + len(Message) + 1
 )
 
-func buildPayload(groupID string) ([]byte, error) {
-	if groupID == "" || len(groupID)+1 > bodyOffset-targetOffset {
-		return nil, fmt.Errorf("实验群 ID 必须非空，且含 NUL 后不覆盖正文起点")
+func buildPayload(selector, targetID string) ([]byte, error) {
+	if targetID == "" || len(targetID)+1 > bodyOffset-targetOffset {
+		return nil, fmt.Errorf("实验目标 ID 必须非空，且含 NUL 后不覆盖正文起点")
 	}
-	// 这是实验允许的输入子集，不是客户端 ID 语法；不改写人工提供的 ID。
-	for _, c := range groupID {
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-') {
-			return nil, fmt.Errorf("实验群 ID 只允许 ASCII 字母、数字、下划线和连字符")
+	if selector == "user_id" {
+		if !validUserID(targetID) {
+			return nil, fmt.Errorf("用户ID必须是有效UTF-8且不含NUL")
+		}
+	} else {
+		// 保持原群实验的输入子集；用户Id按联系人表原值使用，不套用群格式。
+		for _, c := range targetID {
+			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-') {
+				return nil, fmt.Errorf("实验群 ID 只允许 ASCII 字母、数字、下划线和连字符")
+			}
 		}
 	}
 	b := make([]byte, payloadSize)
-	copy(b[selectorOffset:], "group_id")
-	copy(b[targetOffset:], groupID)
+	copy(b[selectorOffset:], selector)
+	copy(b[targetOffset:], targetID)
 	copy(b[bodyOffset:], Message)
 	return b, nil
 }

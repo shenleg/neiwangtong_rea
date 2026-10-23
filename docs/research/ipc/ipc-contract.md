@@ -15,7 +15,7 @@
 | 实现 | `internal/ipc`非交互式Adapter，配置读取和发送返回结构化结果；实验交互仅在 `cmd/ipcexperiment` |
 | 实验长度 | 322 字节，三个 UTF-8 字符串的 NUL 均在传送区内；不是厂商结构总长 |
 | 成功任务 | 原方式03、迁移后04、正式Adapter直接调用05均获独立接收确认；各自日志保留，未自动重试 |
-| 当前真实发送 | 已停止；模块重构只测试和构建，不产生新增发送授权 |
+| 当前真实发送 | 已另经明确授权完成[固定正文单聊验证01](../reports/ipc-phase12/user-confirmation-01.md)；该次标识已占用，开发和测试不产生后续发送授权 |
 
 生产者完整结构、字段容量、生产者 `cbData`、任意正文上限/转义仍未恢复；这些未知项**不撤销固定用例已成功的事实，也不再作为复用该用例的前置恢复任务**。不扫描长度、不追加猜测字段、不开放任意文本。静态事实、运行验证和未知范围分别标注，不互相替代。
 
@@ -66,13 +66,19 @@ Windows 仍按 `cbData` 复制传送区；接收分支不读取它不等于可�
 
 | 选择器 | 字符串地址 | 静态行为 | 当前模块范围 |
 |---|---|---|---|
-| `group_id` | `0x9d15d8` | `0x4ee740 → 0x4edfc0` 查现有群表，`0x4b9c80 → 0x617600` 原生群发送 | 唯一已验证并采用 |
-| `user_id` | `0x9d15b0` | `0x4f48d0 → 0x4f49e0 → 0x4b9320`；未知用户可创建状态4本机记录 | 只有静态证据，不开放 |
+| `group_id` | `0x9d15d8` | `0x4ee740 → 0x4edfc0` 查现有群表，`0x4b9c80 → 0x617600` 原生群发送 | 已验证并采用，原群行为不变 |
+| `user_id` | `0x9d15b0` | `0x4f48d0 → 0x4f49e0 → 0x4b9320`；未知用户可创建状态4本机记录 | `SendUser(userID, attemptID)`接收原始用户ID，必须与配置的唯一授权用户完全相同；固定正文已获一次真实独立接收确认，见[单聊验证01](../reports/ipc-phase12/user-confirmation-01.md) |
 | `group_name` | `0x9d15c0` | 查名称匹配集合并遍历 | 不采用 |
 | `user_name` | `0x9d158c` | 查名称匹配用户并遍历 | 不采用 |
 | `user_ip` | `0x9d15a0` | 按IP查用户集合并遍历 | 不采用 |
 
-依据为 E23、E25、S1、补充E16。ID完整语法、大小写/空白规则及列表语法未恢复；当前原样使用已取得的唯一ID，不据名称补造规则。
+依据为 E23、E25、S1、补充E16。ID完整语法、大小写/空白规则及列表语法未恢复；当前原样使用显式配置的唯一ID，不据名称补造规则。
+
+`SendUser`是明确新增的代码能力，不继承群用例的运行成功证据。E22-I的三字符串读取和E23-I的正文处理均在选择器分流之前，因此沿用同一UTF-8/NUL、偏移与固定322字节载荷。`0x4c447a–0x4c4499`识别 `user_id` 并调用 `0x4f48d0`；E25-U只见一次用户查找和一次节点追加，没有列表展开的正面证据。Adapter不解析列表，也不进行名称/IP替代；用户ID按完整原值使用，只校验有效UTF-8、非空、无NUL及当前载荷的199字节限制，不套用ASCII或群ID格式，见[模块说明](../../tools/ipc.md#显式用户配置)。
+
+未知ID可在 `0x4f49e0` 创建状态4记录；新对象名称为空时，`0x4f48d0` 不把它加入本次发送集合，因此不能推导“新建状态4对象就一定离线排队”。已有名称非空的离线联系人则可进入集合；`0x4b9320`读取用户对象 `+0x1e0` 后，状态4进入本机离线保存分支，非4才调用 `0x5bc200`。[E16、E14/H9；补充U11、U14–U16见联系人报告第5节] API成功既不确认用户存在，也不确认联网发送；真实单聊验证仍须具体目标、固定正文与次数的单独授权及独立接收观察。
+
+联系人ID的直接来源是 `<数据根目录>/cache/db/nr` 的 `OrgStruct_<当前身份>`：`Type=1` 的 `Id` 赋给 `CUser +0x20`，XML `Data/U/Name` 赋给原始名称 `+0xb0`，不使用 `PriKey`、IP、路由号或UI转换后的“复制用户ID”。完整字符串比较不折叠大小写、不trim。只读提取与codec前置条件以[联系人报告第6节](../reports/user-id/user-id-report.md#6-windows-端联系人只读提取与唯一匹配方案)为准，不从群成员表替代获取。后续[nr-codec报告](../reports/nr-codec/nr-codec-report.md)已确认固定版 `aes128cbc / legacy=1` 兼容并完成合成验证；当前[只读工具](../../tools/contactid.md)通过Windows合成加密测试，后续[授权真实副本验证](../reports/user-id/readonly-validation.md)也已成功只读打开；指定原始名称的联系人匹配为not_found；操作者另确认该名称属于本机后，已依据唯一身份表后缀确认本机原始ID，未配置或发送。
 
 正文在 `0x4c41b0` 中先经 `CStringHelper::Replace @ 0x568ef0`，再于 `0x4c42a6` 进入 `0x4b8470` 构造客户端自身内容。[E23-I、E24]
 
@@ -109,6 +115,7 @@ UI群表与原生管理器群表不同。`0x617600` 还检查管理器字段、�
 | E25-G2 | `0x4edfc0` 群查找 | [0101](../reports/gateway-static/0101-procedure_pseudo_code.json) | `ev_f56396820bc581983dc5b523e7726d4d4dbd5466ee3b3b412dd30438a0667f79` |
 | S1 | 五个选择器字符串 | [0116](../reports/gateway-static/0116-search_strings.json) | `ev_9bf29a6ba84e4a7fff249d8f20cd34fa7ee1d778816a81df099480749aec6d30` |
 | E16 | 未解析用户状态4 | [0110](../reports/gateway-static/0110-procedure_pseudo_code.json) | `ev_c959dd3d77da1c1e1c7f25b787e766d99d24706a731aaae8c3c96ee3e2e20cf6` |
+| E14/H9 | `0x4b9320` 单聊及状态4分支 | [0035](../reports/gateway-static/0035-procedure_pseudo_code.json) | `ev_585b8c6bd9d12509095fdc5e1a15e3bece344edf8686d9e29b1bfb112368edf7` |
 | E19 | 群条件与成员投递 | [历史报告第3节](../reports/gateway-static/gateway-report.md#3-原生群聊发送过程) | `ev_17d599ba7a6250a059051f51594bdcf6194448246f10f3ac131758f1b83d01b0` |
 
 第七阶段补充证据及范围见[该阶段报告](../reports/ipc-phase7/ipc-phase7-report.md)：

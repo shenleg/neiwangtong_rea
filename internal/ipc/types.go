@@ -3,7 +3,7 @@ package ipc
 
 import "neiwangtong-gateway/internal/windowprobe"
 
-// Preflight 是只读身份复核结果，不含群ID、窗口标题或账户SID，不是长期发送许可。
+// Preflight 是只读身份复核结果，不含目标ID、窗口标题或账户SID，不是长期发送许可。
 type Preflight struct {
 	PID                  uint32             `json:"pid"`
 	HWND                 windowprobe.Handle `json:"hwnd"`
@@ -34,12 +34,12 @@ type Delivery string
 const (
 	// Unknown 表示没有独立接收成功证据，包含API完成但尚未观察的情况。
 	Unknown Delivery = "unknown"
-	// RecipientObserved 表示外部观察者明确确认正确群、正确发送者的一条本次新增消息。
+	// RecipientObserved 表示外部观察者明确确认正确目标、正确发送者的一条本次新增消息。
 	RecipientObserved Delivery = "recipient_observed"
 )
 
 // SendResult 即使发送失败也保留已发生事实；AttemptReserved表示本次调用已占用日志。
-// SendGroup的Delivery始终为Unknown，接收证据通过RecordObservation单独保存。
+// SendGroup和SendUser的Delivery始终为Unknown，接收证据通过RecordObservation单独保存。
 type SendResult struct {
 	AttemptID       string     `json:"attempt_id"`
 	AttemptReserved bool       `json:"attempt_reserved"`
@@ -56,7 +56,7 @@ const (
 	ClientObservation ObservationKind = "client_observation"
 	// SenderObservation 记录发送方对本次新增消息的观察。
 	SenderObservation ObservationKind = "sender_observation"
-	// RecipientObservation 记录独立接收方对正确群、发送者及本次新增消息的观察。
+	// RecipientObservation 记录独立接收方对正确目标、发送者及本次新增消息的观察。
 	RecipientObservation ObservationKind = "recipient_observation"
 )
 

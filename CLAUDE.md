@@ -4,19 +4,21 @@
 
 业务 WM_COPYDATA 的原生群固定文本实验已成功，独立接收端确认正确群中新增一条、发送者与正文正确。当前工作是维护已验证的 Go 实现，不再从历史报告重新开始生产者搜索或替代方案验证。
 
-- 实现：`internal/ipc`非交互式Adapter，提供 `LoadConfig`、`NewAdapter`、`Preflight`、`SendGroup`、`RecordObservation`；命令入口保留 `cmd/ipcexperiment`，只处理参数、确认与观察，默认只读。
+- 实现：`internal/ipc`非交互式Adapter，提供 `LoadConfig`、`NewAdapter`、`Preflight`、`SendGroup`、`SendUser`、`RecordObservation`；命令入口保留 `cmd/ipcexperiment`，仍只处理群发送参数、确认与观察，默认只读。
 - 客户端：正常授权身份登录的内网通 3.4.3055，Windows x86。
 - 真实发送构建：Windows 386；amd64仅测试、构建和只读检查。
 - 已确认成功的 `NWT-GW-AUTH-TEST-0001-confirmation-03`、`-04` 及正式Adapter直接调用的 `-05` 均已占用，重构与测试不产生新增发送授权。
-- 项目长期目标仍是独立 Windows Go 网关与 HTTP 接口；当前未开放任意正文、私聊或 HTTP。
+- `SendUser(userID, attemptID)`显式接收原始用户ID，必须与配置的 `authorized_user_id` 完全相同，仅发送固定正文；已另经明确授权完成真实单聊并获独立接收确认，见 `docs/research/reports/ipc-phase12/user-confirmation-01.md`。`NWT-GW-AUTH-TEST-0001-user-confirmation-01`已占用；新增方法不产生后续发送授权，约束见 `docs/tools/ipc.md`。
+- 项目长期目标仍是独立 Windows Go 网关与 HTTP 接口；当前未开放任意正文、名称/IP目标或 HTTP。
 
 ## 按任务读取
 
 1. **维护发送实现、判断下一步或准备真实验证**：先读 `docs/research/ipc/validated-route.md`，遵循唯一已验证路线及停止事项。
-2. **修改载荷、编码、群解析或返回值**：读 `docs/research/ipc/ipc-contract.md`，保留地址/Evidence依据，区分静态事实、运行事实和未知范围。
+2. **修改载荷、编码、群/用户解析或返回值**：读 `docs/research/ipc/ipc-contract.md`，保留地址/Evidence依据，区分静态事实、运行事实和未知范围。
 3. **使用或重构模块**：读 `docs/tools/ipc.md`；复用 `internal/windowprobe`，保持原单次控制和测试。
 4. **核对成功结果**：读 `docs/research/reports/ipc-phase12/0001-original-method-confirmation.md`。历史阶段的“未调用”“尚不可实现”仅描述当时状态，不覆盖后续成功证据。
-5. 只有追查具体证据时才读对应小文件，不一次加载全部大型证据包或快照。
+5. **提取联系人ID或准备单聊**：使用 `docs/tools/contactid.md` 的只读工具，联系人来源仅为 `cache/db/nr` 的 `OrgStruct_*`，原样保留ID，结果人工核实后才配置发送。字段依据见 `docs/research/reports/user-id/user-id-report.md`，已验证codec见 `docs/research/reports/nr-codec/nr-codec-report.md`；已通过合成加密测试及授权真实副本只读验证，联系人原始名称为not_found；操作者另确认输入为本机名称后已从唯一身份表后缀取得本机ID，未改配置或发送，见联系人报告同目录 `readonly-validation.md`。不使用群成员表替代，不猜ID或解密参数。
+6. 只有追查具体证据时才读对应小文件，不一次加载全部大型证据包或快照。
 
 ## 已验证路线
 

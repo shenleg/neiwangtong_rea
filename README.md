@@ -11,14 +11,16 @@
 - **使用或维护模块**：[internal/ipc 说明](docs/tools/ipc.md)。
 - **核对真实成功依据**：[原0001方式复验](docs/research/reports/ipc-phase12/0001-original-method-confirmation.md)与[正式Adapter非交互式复验05](docs/research/reports/ipc-phase12/formal-adapter-confirmation-05.md)。
 - **维护窗口定位**：[windowprobe 说明](docs/tools/windowprobe.md)。
+- **提取联系人ID或准备单聊**：[只读提取工具](docs/tools/contactid.md)，字段依据见[联系人研究](docs/research/reports/user-id/user-id-report.md)，加密读取依据见[codec验证](docs/research/reports/nr-codec/nr-codec-report.md)。
 
 ## 代码
 
 - `internal/ipc`：非交互式正式Adapter，复用配置读取、窗口复核、固定载荷和Win32发送，返回结构化结果，支持单次记录及外部接收观察。
 - `cmd/ipcexperiment`：薄实验命令，仅处理参数、确认与观察，调用Adapter；默认只读，实际发送必须显式提供 `-attempt-id`。
 - `internal/windowprobe`、`cmd/windowprobe`：只读窗口采集与严格定位。
+- `tools/contactid.py`：固定codec读取离线加密联系人副本，支持仅看schema和原始姓名精确匹配，不发送、不改配置；Windows合成加密测试及[授权真实副本读取](docs/research/reports/user-id/readonly-validation.md)已通过，联系人名称匹配为not_found；经操作者另确认是本机名称，已从唯一身份表后缀取得本机ID，未配置或发送。
 
-已完成Adapter与实验交互分离；没有新增HTTP、任意文本或私聊，底层成功载荷和Win32实现保持原样。真实群 ID 和本地构建在 Git 忽略的 `local/ipcexperiment/`；原始尝试记录在 APPDATA，均不提交。
+Adapter已新增 `SendUser(userID, attemptID)`，原始用户ID由参数传入且必须与配置的 `authorized_user_id` 完全相同，仅发送原固定正文，沿用原生单聊路径；**另经明确授权已完成一次真实单聊，独立接收确认新增一条、发送者和正文正确，结果为 `recipient_observed`**，见[单聊验证01](docs/research/reports/ipc-phase12/user-confirmation-01.md)。原群发送行为保留，没有新增HTTP、任意文本或单聊命令开关。真实目标 ID 和本地构建在 Git 忽略的 `local/ipcexperiment/`；原始尝试记录在 APPDATA，均不提交。
 
 ## 测试
 

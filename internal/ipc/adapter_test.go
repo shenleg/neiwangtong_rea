@@ -38,22 +38,24 @@ func TestPayload(t *testing.T) {
 	if Message != "NWT-GW-AUTH-TEST-0001" {
 		t.Fatal("固定正文发生变化")
 	}
-	for _, id := range []string{"synthetic-group_1", strings.Repeat("A", 199)} {
-		b, err := buildPayload(id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(b) != 322 {
-			t.Fatalf("长度=%d", len(b))
-		}
-		for offset, text := range map[int]string{0: "group_id", 0x64: id, 0x12c: Message} {
-			end := offset + len(text)
-			if end >= len(b) || string(b[offset:end]) != text || b[end] != 0 {
-				t.Fatalf("字段偏移=%x 不完整", offset)
+	for _, selector := range []string{"group_id", "user_id"} {
+		for _, id := range []string{"synthetic-target_1", strings.Repeat("A", 199)} {
+			b, err := buildPayload(selector, id)
+			if err != nil {
+				t.Fatal(err)
 			}
-		}
-		if bytes.Count(b[:0x64], []byte{0}) != 92 || b[0x141] != 0 {
-			t.Fatal("空隙或正文NUL不符成功载荷")
+			if len(b) != 322 {
+				t.Fatalf("长度=%d", len(b))
+			}
+			for offset, text := range map[int]string{0: selector, 0x64: id, 0x12c: Message} {
+				end := offset + len(text)
+				if end >= len(b) || string(b[offset:end]) != text || b[end] != 0 {
+					t.Fatalf("字段偏移=%x 不完整", offset)
+				}
+			}
+			if bytes.Count(b[:0x64], []byte{0}) != 0x64-len(selector) || b[0x141] != 0 {
+				t.Fatal("空隙或正文NUL不符固定载荷")
+			}
 		}
 	}
 }
@@ -61,7 +63,7 @@ func TestPayload(t *testing.T) {
 // TestPayloadRejectsInvalidID 验证空值、正文覆盖、NUL、非ASCII和列表样式输入在本地被拒绝。
 func TestPayloadRejectsInvalidID(t *testing.T) {
 	for _, id := range []string{"", strings.Repeat("A", 200), "a\x00b", "a,b", "a;b", "a|b", " a", "a\nb", "群", "*", "[a]"} {
-		if _, err := buildPayload(id); err == nil {
+		if _, err := buildPayload("group_id", id); err == nil {
 			t.Fatalf("未拒绝 %q", id)
 		}
 	}

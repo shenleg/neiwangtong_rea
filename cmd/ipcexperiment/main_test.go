@@ -118,6 +118,28 @@ func TestConfigRejectsAmbiguity(t *testing.T) {
 	}
 }
 
+// TestUserConfigDoesNotEnableCommandSend 验证仅用户配置可只读预检，但不会让原群实验命令发送单聊。
+func TestUserConfigDoesNotEnableCommandSend(t *testing.T) {
+	path := writeTestConfig(t, `{"authorized_user_id":"synthetic-user_1"}`)
+	calls := 0
+	execute := func(_ string, config ipc.Config, _ string, send bool, _ io.Reader, _ io.Writer) error {
+		calls++
+		if send || config.AuthorizedUserID != "synthetic-user_1" || config.AuthorizedGroupID != "" {
+			t.Fatal("用户配置被改变或隐式请求发送")
+		}
+		return nil
+	}
+	if err := runWith([]string{"-exe", "synthetic.exe", "-config", path}, execute); err != nil {
+		t.Fatal(err)
+	}
+	if err := runWith([]string{"-exe", "synthetic.exe", "-config", path, "-send", "-attempt-id", "NWT-GW-SYNTHETIC-USER"}, execute); err == nil {
+		t.Fatal("仅用户配置仍进入命令发送")
+	}
+	if calls != 1 {
+		t.Fatal("命令执行了用户发送")
+	}
+}
+
 // TestConfigMissingFile 验证磁盘读取失败直接报错，不静默恢复为空授权或其他目标。
 func TestConfigMissingFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing.json")

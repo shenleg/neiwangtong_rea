@@ -50,6 +50,7 @@ type storedEvent struct {
 	Event     string      `json:"event"`
 	AttemptID string      `json:"attempt_id"`
 	GroupID   string      `json:"group_id"`
+	UserID    string      `json:"user_id"`
 	Text      string      `json:"text"`
 	Result    *CallResult `json:"result"`
 }
@@ -114,7 +115,10 @@ func (a *Adapter) RecordObservation(attemptID string, observation Observation) (
 	if reservations != 1 || calls != 1 || !call.Invoked {
 		return delivery, fmt.Errorf("没有可追加观察的唯一实际调用")
 	}
-	if reserved.AttemptID != attemptID || reserved.GroupID != a.groupID || reserved.Text != Message {
+	// 目标种类和原始ID都必须匹配；只含group_id的历史记录继续按群任务校验。
+	groupMatches := reserved.GroupID != "" && reserved.UserID == "" && reserved.GroupID == a.groupID
+	userMatches := reserved.UserID != "" && reserved.GroupID == "" && reserved.UserID == a.userID
+	if reserved.AttemptID != attemptID || reserved.Text != Message || !(groupMatches || userMatches) {
 		return delivery, fmt.Errorf("尝试记录与绑定的授权任务不符")
 	}
 	if observation.Kind == RecipientObservation && observation.State == "one" {

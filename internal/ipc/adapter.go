@@ -23,13 +23,14 @@ type dependencies struct {
 	allowSend   func() error
 }
 
-// Adapter 绑定一个正常授权客户端实例与配置中的唯一原生群。
+// Adapter 绑定一个正常授权客户端实例及配置中的唯一原生群和/或唯一用户。
 // 方法可并发调用，同一Adapter内串行执行；零值不可用，必须通过NewAdapter创建。
-// 模块没有输入流、控制台确认、重试或自动任务ID；调用SendGroup代表上层已完成单次授权。
+// 模块没有输入流、控制台确认、重试或自动任务ID；调用SendGroup或SendUser代表上层已完成单次授权。
 type Adapter struct {
 	mu      sync.Mutex
 	exePath string
 	groupID string
+	userID  string
 	target  windowprobe.Target
 	d       dependencies
 }
@@ -44,11 +45,14 @@ func newAdapter(exePath string, config Config, d dependencies) (*Adapter, error)
 	if config.AuthorizedGroupID != "" && !groupIDPattern.MatchString(config.AuthorizedGroupID) {
 		return nil, fmt.Errorf("授权群ID必须是32个十六进制字符")
 	}
+	if config.AuthorizedUserID != "" && !validUserID(config.AuthorizedUserID) {
+		return nil, fmt.Errorf("授权用户ID必须是1至199字节有效UTF-8且不含NUL")
+	}
 	target, _, err := d.check(exePath, nil)
 	if err != nil {
 		return nil, err
 	}
-	return &Adapter{exePath: exePath, groupID: config.AuthorizedGroupID, target: target, d: d}, nil
+	return &Adapter{exePath: exePath, groupID: config.AuthorizedGroupID, userID: config.AuthorizedUserID, target: target, d: d}, nil
 }
 
 // Preflight 只读重新核对绑定的同一客户端与窗口，返回结构化身份信息；不输出、不创建日志或发送。
@@ -68,18 +72,33 @@ func (a *Adapter) Preflight() (Preflight, error) {
 // 调用前独占持久化该标识，已有记录永久拒绝重复调用；不自动生成新标识或重试。
 // 返回值始终保留已发生的调用事实且Delivery为Unknown；平台、身份、日志或Win32失败时同时返回错误。
 // 此方法不读取输入、显示提示或等待接收观察，正常返回也不表示消息送达。
-func (a *Adapter) SendGroup(attemptID string) (result SendResult, err error) {
+func (a *Adapter) SendGroup(attemptID string) (SendResult, error) {
+	return a.send(attemptID, "group_id", a.groupID)
+}
+
+// SendUser 向userID指定的原始用户身份发送一次固定Message；userID必须与配置的唯一授权用户完全相同。
+// attemptID必须是上层明确授权的独立请求标识；与SendGroup共用单次日志，已有记录永久拒绝，不自动重试。
+// 返回值保留调用事实且Delivery始终为Unknown；目标不符、未绑定用户、平台、身份、日志或Win32失败时返回错误。
+// 此方法不按名称/IP查找、不解析列表，也不等待独立接收观察；正常返回不表示消息送达。
+func (a *Adapter) SendUser(userID, attemptID string) (SendResult, error) {
+	if userID != a.userID {
+		return SendResult{AttemptID: attemptID, Delivery: Unknown}, fmt.Errorf("用户ID与配置的唯一授权用户不符；未发送")
+	}
+	return a.send(attemptID, "user_id", userID)
+}
+
+func (a *Adapter) send(attemptID, selector, targetID string) (result SendResult, err error) {
 	result = SendResult{AttemptID: attemptID, Delivery: Unknown}
 	if err := validateAttemptID(attemptID); err != nil {
 		return result, err
 	}
-	if a.groupID == "" {
-		return result, fmt.Errorf("尚未绑定唯一授权group_id；未发送")
+	if targetID == "" {
+		return result, fmt.Errorf("尚未绑定唯一授权%s；未发送", selector)
 	}
 	if err := a.d.allowSend(); err != nil {
 		return result, err
 	}
-	payload, err := buildPayload(a.groupID)
+	payload, err := buildPayload(selector, targetID)
 	if err != nil {
 		return result, err
 	}
@@ -102,7 +121,7 @@ func (a *Adapter) SendGroup(attemptID string) (result SendResult, err error) {
 	}
 	result.AttemptReserved = true
 	defer func() { err = errors.Join(err, f.Close()) }()
-	if err := appendEvent(f, map[string]any{"event": "attempt_reserved", "time": time.Now().UTC(), "attempt_id": attemptID, "group_id": a.groupID, "text": Message, "preflight": info, "cbData": len(payload), "delivery": Unknown}); err != nil {
+	if err := appendEvent(f, map[string]any{"event": "attempt_reserved", "time": time.Now().UTC(), "attempt_id": attemptID, selector: targetID, "text": Message, "preflight": info, "cbData": len(payload), "delivery": Unknown}); err != nil {
 		return result, err
 	}
 	// 日志已占用，最终身份检查失败也保留记录；确认等待由命令层处理，模块只核对绑定实例。

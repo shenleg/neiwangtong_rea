@@ -177,34 +177,38 @@ func receiverFixture(t *testing.T, delay bool) (windowprobe.Target, *json.Decode
 	return target, decoder, cleanup
 }
 
-// TestCrossProcessSend 验证真实跨进程复制、固定业务标记、有效发送方 HWND 及 LRESULT 分离。
+// TestCrossProcessSend 验证群/用户选择器的真实跨进程复制、固定业务标记、有效发送方HWND及LRESULT分离。
 func TestCrossProcessSend(t *testing.T) {
 	if runtime.GOARCH != "386" {
 		t.Skip("本次实验只允许 386 发送，amd64 只测 ABI 和只读身份")
 	}
 	target, decoder, cleanup := receiverFixture(t, false)
 	defer cleanup()
-	payload, err := buildPayload("synthetic-group_1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	r, err := sendOnce(target, payload)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !r.Completed || !r.LResultValid || r.LResult != 1 || r.Timeout != "no" {
-		t.Fatalf("调用结果错误: %+v", r)
-	}
-	var observed struct {
-		Data    uint64
-		Payload []byte
-		Sender  bool
-	}
-	if err := decoder.Decode(&observed); err != nil {
-		t.Fatal(err)
-	}
-	if observed.Data != businessData || !observed.Sender || !bytes.Equal(observed.Payload, payload) {
-		t.Fatal("跨进程接收字节或发送方 HWND 不符")
+	for _, selector := range []string{"group_id", "user_id"} {
+		t.Run(selector, func(t *testing.T) {
+			payload, err := buildPayload(selector, "synthetic-target_1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			r, err := sendOnce(target, payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !r.Completed || !r.LResultValid || r.LResult != 1 || r.Timeout != "no" {
+				t.Fatalf("调用结果错误: %+v", r)
+			}
+			var observed struct {
+				Data    uint64
+				Payload []byte
+				Sender  bool
+			}
+			if err := decoder.Decode(&observed); err != nil {
+				t.Fatal(err)
+			}
+			if observed.Data != businessData || !observed.Sender || !bytes.Equal(observed.Payload, payload) {
+				t.Fatal("跨进程接收字节或发送方 HWND 不符")
+			}
+		})
 	}
 }
 
@@ -215,7 +219,7 @@ func TestCrossProcessTimeout(t *testing.T) {
 	}
 	target, decoder, cleanup := receiverFixture(t, true)
 	defer cleanup()
-	payload, err := buildPayload("synthetic-group_1")
+	payload, err := buildPayload("group_id", "synthetic-group_1")
 	if err != nil {
 		t.Fatal(err)
 	}
