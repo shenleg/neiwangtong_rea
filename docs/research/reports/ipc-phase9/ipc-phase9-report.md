@@ -79,6 +79,8 @@ GOARCH=386 go run ./cmd/windowprobe -format json -count 5 -interval 1s -label ph
 
 ### 3.1 已有资料是否给出了获取步骤
 
+**后续静态研究更新**：已找到 `data\qrp` SQLite 群元数据和 `QGroupInfo_<内部身份标识>.Name → QGroupId` 对应关系，详见[群 ID 获取报告](../qgroup-id/qgroup-id-report.md)。该报告提供只查询授权群元数据的只读方案，不是读取聊天记录或凭据；Windows 实际验证和真实 ID 仍未完成。以下保留阶段九当时的资料状态与准备要求。
+
 **没有经过验证的客户端菜单、命令或工具获取步骤。** 已有资料只给出了以下要求和语义：
 
 - [历史报告第 3、7 节](../gateway-static/gateway-report.md)：QGROUP_ID 是原生逻辑群字符串，不是群显示名称或 IPMsg 分组；无法从授权可见信息确认时先人工补足，不读取进程内存或解密数据库。

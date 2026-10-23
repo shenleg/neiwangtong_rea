@@ -6,6 +6,8 @@
 
 **阶段九更新**：操作者手动关闭附加窗口后，386 五次只读采集均为唯一候选，连续 Resolve 和完整身份预检通过；账号与测试群成员资格由操作者确认。准确的 QGROUP_ID 尚未取得，程序授权群仍为空，首次发送准备未完成，没有向内网通发送消息。见[阶段九报告](../reports/ipc-phase9/ipc-phase9-report.md)，其中包含窗口元数据、群 ID 获取与本地填写要求、发送前检查表。上面的阶段八歧义是历史结果，不是本轮复检结果。
 
+**群 ID 只读获取研究更新**：已静态恢复群元数据存储为 `<数据根目录>\data\qrp` SQLite 文件，`QGroupInfo_<内部身份标识>` 表中的 `Name → QGroupId` 对应群名称与原生 QGROUP_ID；`PriKey` 不是群 ID。路径选择、字段传递、Evidence 和 Windows 只读步骤见[群 ID 获取报告](../reports/qgroup-id/qgroup-id-report.md)。本轮未读取 Windows 实际数据库，真实授权群 ID 仍未取得，未修改发送授权或发送消息。
+
 ## 1. 范围与当前结论
 
 - 软件：内网通 3.4.3055，Windows x86 / 原生 C++ / SkinUI。

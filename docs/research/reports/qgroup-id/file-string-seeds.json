@@ -1,0 +1,120 @@
+{
+  "purpose": "从发行 EXE 原始文件中提取数据库及群元数据字面串；不是执行结果，也不包含真实用户数据。",
+  "sha256": "e7caef3fe744f9fe6ba90dd1d53b7e64241cb54020a8bf37be5e756e2fe881b1",
+  "strings": [
+    {
+      "file_offset": "0x5e9b3c",
+      "address": "0x9eaf3c",
+      "encoding": "ascii",
+      "value": "QGROUP_ID"
+    },
+    {
+      "file_offset": "0x5e9b48",
+      "address": "0x9eaf48",
+      "encoding": "ascii",
+      "value": "QGROUP_NAME"
+    },
+    {
+      "file_offset": "0x5e70c8",
+      "address": "0x9e84c8",
+      "encoding": "utf-16le",
+      "value": "create table %s (%s integer primary key autoincrement, %s text, %s text, %s text, %s text, %s text, %s integer, %s integer, %s integer, %s text, %s text, %s integer, %s integer)"
+    },
+    {
+      "file_offset": "0x5e7438",
+      "address": "0x9e8838",
+      "encoding": "utf-16le",
+      "value": "create table %s (%s integer primary key autoincrement, %s text, %s text, %s text, %s text, %s text, %s integer, %s integer)"
+    },
+    {
+      "file_offset": "0x5e96c0",
+      "address": "0x9eaac0",
+      "encoding": "utf-16le",
+      "value": "<X_QGROUP_REQ_USER_RSP docver=\"%u\"><RET>%u</RET><QGROUP_ID>%s</QGROUP_ID></X_QGROUP_REQ_USER_RSP>"
+    },
+    {
+      "file_offset": "0x5e9788",
+      "address": "0x9eab88",
+      "encoding": "utf-16le",
+      "value": "<X_QGROUP_REQ_USER_RSP docver=\"%u\"><RET>%u</RET><QGROUP_ID>%s</QGROUP_ID><INFO><QGROUP_ID>%s</QGROUP_ID><QGROUP_NAME>%s</QGROUP_NAME><QGROUP_MASTER>%s</QGROUP_MASTER><QGROUP_INTR>%s</QGROUP_INTR><QGROUP_ANN>%s</QGROUP_ANN><QGROUP_INFO_VER>%llu</GROUP_INFO_VER><QGROUP_USER_VER>%llu</QGROUP_USER_VER><QGROUP_ALLOW_OTHER_ADD>%llu</QGROUP_ALLOW_OTHER_ADD><QGROUP_PHOTO_MD5>%s</QGROUP_PHOTO_MD5></INFO><USER>%s</USER></X_QGROUP_REQ_USER_RSP>"
+    },
+    {
+      "file_offset": "0x5ea170",
+      "address": "0x9eb570",
+      "encoding": "utf-16le",
+      "value": "<X_QGROUP_DISMISS docver=\"%u\"><QGROUP_ID>%s</QGROUP_ID></X_QGROUP_DISMISS>"
+    },
+    {
+      "file_offset": "0x5ea220",
+      "address": "0x9eb620",
+      "encoding": "utf-16le",
+      "value": "<X_QGROUP_OTHER_INVITE docver=\"%u\"><QGROUP_ID>%s</QGROUP_ID><USER>%s</USER></X_QGROUP_OTHER_INVITE>"
+    },
+    {
+      "file_offset": "0x5ea430",
+      "address": "0x9eb830",
+      "encoding": "utf-16le",
+      "value": "<X_QGROUP_INVITE docver=\"%u\"><INFO><QGROUP_ID>%s</QGROUP_ID><QGROUP_NAME>%s</QGROUP_NAME><QGROUP_MASTER>%s</QGROUP_MASTER><QGROUP_INTR>%s</QGROUP_INTR><QGROUP_ANN>%s</QGROUP_ANN><QGROUP_INFO_VER>%llu</GROUP_INFO_VER><QGROUP_USER_VER>%llu</QGROUP_USER_VER><QGROUP_ALLOW_OTHER_ADD>%llu</QGROUP_ALLOW_OTHER_ADD><QGROUP_PHOTO_MD5>%s</QGROUP_PHOTO_MD5></INFO></X_QGROUP_INVITE>"
+    },
+    {
+      "file_offset": "0x5ea730",
+      "address": "0x9ebb30",
+      "encoding": "utf-16le",
+      "value": "<X_QGROUP_REQ_USER docver=\"%u\"><QGROUP_ID>%s</QGROUP_ID></X_QGROUP_REQ_USER>"
+    },
+    {
+      "file_offset": "0x5ea898",
+      "address": "0x9ebc98",
+      "encoding": "utf-16le",
+      "value": "<X_QGROUP_REQ_INFO_RSP docver=\"%u\"><RET>%u</RET><QGROUP_ID>%s</QGROUP_ID></X_QGROUP_REQ_INFO_RSP>"
+    },
+    {
+      "file_offset": "0x5ea960",
+      "address": "0x9ebd60",
+      "encoding": "utf-16le",
+      "value": "<X_QGROUP_REQ_INFO_RSP docver=\"%u\"><RET>%u</RET><QGROUP_ID>%s</QGROUP_ID><INFO><QGROUP_ID>%s</QGROUP_ID><QGROUP_NAME>%s</QGROUP_NAME><QGROUP_MASTER>%s</QGROUP_MASTER><QGROUP_INTR>%s</QGROUP_INTR><QGROUP_ANN>%s</QGROUP_ANN><QGROUP_INFO_VER>%llu</GROUP_INFO_VER><QGROUP_USER_VER>%llu</QGROUP_USER_VER><QGROUP_ALLOW_OTHER_ADD>%llu</QGROUP_ALLOW_OTHER_ADD><QGROUP_PHOTO_MD5>%s</QGROUP_PHOTO_MD5></INFO></X_QGROUP_REQ_INFO_RSP>"
+    },
+    {
+      "file_offset": "0x5ec780",
+      "address": "0x9edb80",
+      "encoding": "utf-16le",
+      "value": "<X_QGROUP_EXIT docver=\"%u\"><QGROUP_ID>%s</QGROUP_ID></X_QGROUP_EXIT>"
+    },
+    {
+      "file_offset": "0x5ec820",
+      "address": "0x9edc20",
+      "encoding": "utf-16le",
+      "value": "<X_QGROUP_PUSH_INFO docver=\"%u\"><INFO><QGROUP_ID>%s</QGROUP_ID><QGROUP_NAME>%s</QGROUP_NAME><QGROUP_MASTER>%s</QGROUP_MASTER><QGROUP_INTR>%s</QGROUP_INTR><QGROUP_ANN>%s</QGROUP_ANN><QGROUP_INFO_VER>%llu</GROUP_INFO_VER><QGROUP_USER_VER>%llu</QGROUP_USER_VER><QGROUP_ALLOW_OTHER_ADD>%llu</QGROUP_ALLOW_OTHER_ADD><QGROUP_PHOTO_MD5>%s</QGROUP_PHOTO_MD5></INFO></X_QGROUP_PUSH_INFO>"
+    },
+    {
+      "file_offset": "0x5ecb30",
+      "address": "0x9edf30",
+      "encoding": "utf-16le",
+      "value": "<X_QGROUP_PUSH_USER docver=\"%u\"><INFO><QGROUP_ID>%s</QGROUP_ID><QGROUP_NAME>%s</QGROUP_NAME><QGROUP_MASTER>%s</QGROUP_MASTER><QGROUP_INTR>%s</QGROUP_INTR><QGROUP_ANN>%s</QGROUP_ANN><QGROUP_INFO_VER>%llu</GROUP_INFO_VER><QGROUP_USER_VER>%llu</QGROUP_USER_VER><QGROUP_ALLOW_OTHER_ADD>%llu</QGROUP_ALLOW_OTHER_ADD><QGROUP_PHOTO_MD5>%s</QGROUP_PHOTO_MD5></INFO><USER>%s</USER></X_QGROUP_PUSH_USER>"
+    },
+    {
+      "file_offset": "0x5ecfa8",
+      "address": "0x9ee3a8",
+      "encoding": "utf-16le",
+      "value": "<X_QGROUP_REQ_INFO docver=\"%u\"><QGROUP_ID>%s</QGROUP_ID></X_QGROUP_REQ_INFO>"
+    },
+    {
+      "file_offset": "0x5ed8d8",
+      "address": "0x9eecd8",
+      "encoding": "utf-16le",
+      "value": "<X_QGROUP_KICK docver=\"%u\"><QGROUP_ID>%s</QGROUP_ID></X_QGROUP_KICK>"
+    },
+    {
+      "file_offset": "0x5ed978",
+      "address": "0x9eed78",
+      "encoding": "utf-16le",
+      "value": "<X_QGROUP_INVITE_RSP docver=\"%u\"><QGROUP_ID>%s</QGROUP_ID><USER_NAME>%s</USER_NAME><ACTION>%u</ACTION></X_QGROUP_INVITE_RSP>"
+    },
+    {
+      "file_offset": "0x5edaa0",
+      "address": "0x9eeea0",
+      "encoding": "utf-16le",
+      "value": "<X_QGROUP_SEND_MSG docver=\"%u\"><QGROUP_ID>%s</QGROUP_ID><MSG_ID>%llu</MSG_ID><MSG>%s</MSG><HIDE_RECORD>%u</HIDE_RECORD></X_QGROUP_SEND_MSG>"
+    }
+  ]
+}

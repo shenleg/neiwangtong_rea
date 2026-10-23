@@ -1,0 +1,105 @@
+{
+  "scope": "仅合成数据库验证 SQL 精确匹配、消歧条件和只读打开；未读取任何实际客户端数据库，未运行 Windows sqlite3.exe。",
+  "sqlite_version": "3.46.1",
+  "cases": [
+    {
+      "case": "授权测试群",
+      "expected": [
+        1,
+        1
+      ],
+      "actual": [
+        1,
+        1
+      ],
+      "passed": true
+    },
+    {
+      "case": "同名群",
+      "expected": [
+        2,
+        2
+      ],
+      "actual": [
+        2,
+        2
+      ],
+      "passed": true
+    },
+    {
+      "case": "不存在",
+      "expected": [
+        0,
+        0
+      ],
+      "actual": [
+        0,
+        0
+      ],
+      "passed": true
+    },
+    {
+      "case": "测试'群",
+      "expected": [
+        1,
+        1
+      ],
+      "actual": [
+        1,
+        1
+      ],
+      "passed": true
+    },
+    {
+      "case": "casesensitive",
+      "expected": [
+        0,
+        0
+      ],
+      "actual": [
+        0,
+        0
+      ],
+      "passed": true
+    },
+    {
+      "case": "CaseSensitive",
+      "expected": [
+        1,
+        1
+      ],
+      "actual": [
+        1,
+        1
+      ],
+      "passed": true
+    },
+    {
+      "case": "CaseSensitive ",
+      "expected": [
+        1,
+        1
+      ],
+      "actual": [
+        1,
+        1
+      ],
+      "passed": true
+    },
+    {
+      "case": "空标识",
+      "expected": [
+        1,
+        0
+      ],
+      "actual": [
+        1,
+        0
+      ],
+      "passed": true
+    }
+  ],
+  "escaped_apostrophe": true,
+  "readonly_write_error": "attempt to write a readonly database",
+  "synthetic_database_unchanged": true
+}
