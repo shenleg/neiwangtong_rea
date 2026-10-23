@@ -1,0 +1,181 @@
+{
+  "commit": "f29b06b424e556cf0ad8b19646b30dfc3e3e36d8",
+  "sqlite3mc_version": "SQLite3 Multiple Ciphers 2.7.0",
+  "reference_sqlite_version": "3.54.1",
+  "fixture_sqlite_version": "3.46.1",
+  "openssl_version": "OpenSSL 3.5.7 9 Jun 2026 (Library: OpenSSL 3.5.7 9 Jun 2026)",
+  "derivation_vectors": 7,
+  "page_vectors": 40,
+  "synthetic_fixture_directory": "/tmp/nr-codec-synthetic-fixtures.ozl2pmgi",
+  "databases": [
+    {
+      "page_size": 512,
+      "pages": 50,
+      "database_sha256_before": "87984810b42ed4b7711a2b6ab4c5a1affe527d3a5d107e890951ff843bf98fef",
+      "database_sha256_after": "87984810b42ed4b7711a2b6ab4c5a1affe527d3a5d107e890951ff843bf98fef",
+      "schema": [
+        [
+          "OrgStruct_SYNTHETIC",
+          "CREATE TABLE OrgStruct_SYNTHETIC (\n                PriKey INTEGER PRIMARY KEY AUTOINCREMENT, UpdateTime INTEGER,\n                OnlineTime INTEGER, Type INTEGER, Id TEXT, Data TEXT, UNIQUE(Id))"
+        ]
+      ],
+      "matched_id": "synthetic-target-id",
+      "write_rejected": "SQLite 8: attempt to write a readonly database",
+      "sidecars_rejected": [
+        "unsupported sidecar: -wal",
+        "unsupported sidecar: -shm",
+        "unsupported sidecar: -journal"
+      ],
+      "wrong_password_rejected": "SQLite 26: file is not a database",
+      "header_bootstrap_page_size": 512
+    },
+    {
+      "page_size": 1024,
+      "pages": 23,
+      "database_sha256_before": "b0a7439d9f5edfa2102898d0cd95fbc03ba4ffca705c662468da72c82d560eb0",
+      "database_sha256_after": "b0a7439d9f5edfa2102898d0cd95fbc03ba4ffca705c662468da72c82d560eb0",
+      "schema": [
+        [
+          "OrgStruct_SYNTHETIC",
+          "CREATE TABLE OrgStruct_SYNTHETIC (\n                PriKey INTEGER PRIMARY KEY AUTOINCREMENT, UpdateTime INTEGER,\n                OnlineTime INTEGER, Type INTEGER, Id TEXT, Data TEXT, UNIQUE(Id))"
+        ]
+      ],
+      "matched_id": "synthetic-target-id",
+      "write_rejected": "SQLite 8: attempt to write a readonly database",
+      "sidecars_rejected": [
+        "unsupported sidecar: -wal",
+        "unsupported sidecar: -shm",
+        "unsupported sidecar: -journal"
+      ],
+      "wrong_password_rejected": "SQLite 26: file is not a database",
+      "header_bootstrap_page_size": 1024
+    },
+    {
+      "page_size": 2048,
+      "pages": 12,
+      "database_sha256_before": "ba2972071403b10cf123683ffff4278592784d47009a5be8df81f1a369483703",
+      "database_sha256_after": "ba2972071403b10cf123683ffff4278592784d47009a5be8df81f1a369483703",
+      "schema": [
+        [
+          "OrgStruct_SYNTHETIC",
+          "CREATE TABLE OrgStruct_SYNTHETIC (\n                PriKey INTEGER PRIMARY KEY AUTOINCREMENT, UpdateTime INTEGER,\n                OnlineTime INTEGER, Type INTEGER, Id TEXT, Data TEXT, UNIQUE(Id))"
+        ]
+      ],
+      "matched_id": "synthetic-target-id",
+      "write_rejected": "SQLite 8: attempt to write a readonly database",
+      "sidecars_rejected": [
+        "unsupported sidecar: -wal",
+        "unsupported sidecar: -shm",
+        "unsupported sidecar: -journal"
+      ],
+      "wrong_password_rejected": "SQLite 26: file is not a database",
+      "header_bootstrap_page_size": 2048
+    },
+    {
+      "page_size": 4096,
+      "pages": 8,
+      "database_sha256_before": "6f572f51593e9469a6b259e7adcea7919c683c36c9db2ced4178edd57423f147",
+      "database_sha256_after": "6f572f51593e9469a6b259e7adcea7919c683c36c9db2ced4178edd57423f147",
+      "schema": [
+        [
+          "OrgStruct_SYNTHETIC",
+          "CREATE TABLE OrgStruct_SYNTHETIC (\n                PriKey INTEGER PRIMARY KEY AUTOINCREMENT, UpdateTime INTEGER,\n                OnlineTime INTEGER, Type INTEGER, Id TEXT, Data TEXT, UNIQUE(Id))"
+        ]
+      ],
+      "matched_id": "synthetic-target-id",
+      "write_rejected": "SQLite 8: attempt to write a readonly database",
+      "sidecars_rejected": [
+        "unsupported sidecar: -wal",
+        "unsupported sidecar: -shm",
+        "unsupported sidecar: -journal"
+      ],
+      "wrong_password_rejected": "SQLite 26: file is not a database",
+      "header_bootstrap_page_size": 4096
+    },
+    {
+      "page_size": 8192,
+      "pages": 6,
+      "database_sha256_before": "5b6572adf56ff424def1700b1435c5ee53df5197204b5d4dfc2eda81ae0208d2",
+      "database_sha256_after": "5b6572adf56ff424def1700b1435c5ee53df5197204b5d4dfc2eda81ae0208d2",
+      "schema": [
+        [
+          "OrgStruct_SYNTHETIC",
+          "CREATE TABLE OrgStruct_SYNTHETIC (\n                PriKey INTEGER PRIMARY KEY AUTOINCREMENT, UpdateTime INTEGER,\n                OnlineTime INTEGER, Type INTEGER, Id TEXT, Data TEXT, UNIQUE(Id))"
+        ]
+      ],
+      "matched_id": "synthetic-target-id",
+      "write_rejected": "SQLite 8: attempt to write a readonly database",
+      "sidecars_rejected": [
+        "unsupported sidecar: -wal",
+        "unsupported sidecar: -shm",
+        "unsupported sidecar: -journal"
+      ],
+      "wrong_password_rejected": "SQLite 26: file is not a database",
+      "header_bootstrap_page_size": 8192
+    },
+    {
+      "page_size": 16384,
+      "pages": 4,
+      "database_sha256_before": "b4de44da3a0a255c1d18082af9c6232905252660a75aec46c14228ff9256f7fe",
+      "database_sha256_after": "b4de44da3a0a255c1d18082af9c6232905252660a75aec46c14228ff9256f7fe",
+      "schema": [
+        [
+          "OrgStruct_SYNTHETIC",
+          "CREATE TABLE OrgStruct_SYNTHETIC (\n                PriKey INTEGER PRIMARY KEY AUTOINCREMENT, UpdateTime INTEGER,\n                OnlineTime INTEGER, Type INTEGER, Id TEXT, Data TEXT, UNIQUE(Id))"
+        ]
+      ],
+      "matched_id": "synthetic-target-id",
+      "write_rejected": "SQLite 8: attempt to write a readonly database",
+      "sidecars_rejected": [
+        "unsupported sidecar: -wal",
+        "unsupported sidecar: -shm",
+        "unsupported sidecar: -journal"
+      ],
+      "wrong_password_rejected": "SQLite 26: file is not a database",
+      "header_bootstrap_page_size": 16384
+    },
+    {
+      "page_size": 32768,
+      "pages": 4,
+      "database_sha256_before": "8dc8669c019ff901c9b0b691f6a61ead6af4b30d7bd8e6d0463b859d71f4aabb",
+      "database_sha256_after": "8dc8669c019ff901c9b0b691f6a61ead6af4b30d7bd8e6d0463b859d71f4aabb",
+      "schema": [
+        [
+          "OrgStruct_SYNTHETIC",
+          "CREATE TABLE OrgStruct_SYNTHETIC (\n                PriKey INTEGER PRIMARY KEY AUTOINCREMENT, UpdateTime INTEGER,\n                OnlineTime INTEGER, Type INTEGER, Id TEXT, Data TEXT, UNIQUE(Id))"
+        ]
+      ],
+      "matched_id": "synthetic-target-id",
+      "write_rejected": "SQLite 8: attempt to write a readonly database",
+      "sidecars_rejected": [
+        "unsupported sidecar: -wal",
+        "unsupported sidecar: -shm",
+        "unsupported sidecar: -journal"
+      ],
+      "wrong_password_rejected": "SQLite 26: file is not a database",
+      "header_bootstrap_page_size": 32768
+    },
+    {
+      "page_size": 65536,
+      "pages": 4,
+      "database_sha256_before": "bbe216dba66720acbd7b584ecb4fe7458cd95bf6cf4362075a74f052ee878e07",
+      "database_sha256_after": "bbe216dba66720acbd7b584ecb4fe7458cd95bf6cf4362075a74f052ee878e07",
+      "schema": [
+        [
+          "OrgStruct_SYNTHETIC",
+          "CREATE TABLE OrgStruct_SYNTHETIC (\n                PriKey INTEGER PRIMARY KEY AUTOINCREMENT, UpdateTime INTEGER,\n                OnlineTime INTEGER, Type INTEGER, Id TEXT, Data TEXT, UNIQUE(Id))"
+        ]
+      ],
+      "matched_id": "synthetic-target-id",
+      "write_rejected": "SQLite 8: attempt to write a readonly database",
+      "sidecars_rejected": [
+        "unsupported sidecar: -wal",
+        "unsupported sidecar: -shm",
+        "unsupported sidecar: -journal"
+      ],
+      "wrong_password_rejected": "SQLite 26: file is not a database",
+      "header_bootstrap_page_size": 65536
+    }
+  ],
+  "passed": true
+}

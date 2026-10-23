@@ -2,6 +2,8 @@
 
 本文恢复联系人对象、持久化表和 IPC `user_id` 的对应关系；只做定向静态分析，不实现或修改 Windows IPC Adapter。
 
+后续补充：[nr codec 静态契约与合成兼容验证](../nr-codec/nr-codec-report.md) 已完成固定版本 `aes128cbc`、`legacy=1` 的比对、页大小恢复和合成已知答案测试。本文第 4.3、6.1、7.2 节的 codec 待验证描述保留当时状态，以补充报告的后续结果为准；真实私有 `nr`、Windows 实例/身份归属和实际 ID 仍未读取验证。
+
 ## 1. 结论
 
 **联系人列表自身存在可持久化的名称—user_id 映射，不需要从群成员提取。** 对本次样本，联系人来源是 `<数据根目录>\cache\db\nr` 中的 `OrgStruct_<当前身份标识>` 表：`Type = 1` 的记录表示原生用户，`Id` 列恢复到 `CUser +0x20`；`Data` 列包含 XML，`Name` 子元素恢复到 `CUser +0xb0`。IPC 的 `user_id` 分支按 `CUser +0x20` 对应的完整字符串键查找同一联系人管理器。[U1–U6、U11、U12]
