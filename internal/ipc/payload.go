@@ -1,10 +1,10 @@
 // 本文件构造阶段八单次实验缓冲区；其长度和空隙初始化不是厂商协议定义。
-package ipcexperiment
+package ipc
 
 import "fmt"
 
 const (
-	// Message 是本次实验唯一允许的正文，不接受调用者提供其他文本。
+	// Message 是用户明确要求再次确认的固定正文，不接受任意文本。
 	Message = "NWT-GW-AUTH-TEST-0001"
 	// SampleSHA256 是已静态分析的客户端文件摘要，运行前必须完全匹配。
 	SampleSHA256   = "e7caef3fe744f9fe6ba90dd1d53b7e64241cb54020a8bf37be5e756e2fe881b1"

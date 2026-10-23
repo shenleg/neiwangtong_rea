@@ -1,7 +1,7 @@
 //go:build windows
 
 // 本文件仅向测试子进程自己的隐藏窗口发送 WM_COPYDATA，不调用内网通窗口。
-package ipcexperiment
+package ipc
 
 import (
 	"bytes"

@@ -1,5 +1,5 @@
 // 本文件仅解释 Win32 调用完成与超时，不从窗口返回值推断消息送达。
-package ipcexperiment
+package ipc
 
 import "time"
 

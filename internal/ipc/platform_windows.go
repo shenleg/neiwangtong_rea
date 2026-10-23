@@ -1,7 +1,7 @@
 //go:build windows
 
 // 本文件只读核对客户端文件/进程身份，并封装单次、有期限的 WM_COPYDATA；不访问目标内存。
-package ipcexperiment
+package ipc
 
 import (
 	"crypto/sha256"

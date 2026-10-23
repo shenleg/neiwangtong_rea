@@ -1,7 +1,7 @@
 //go:build !windows
 
 // 本文件使非 Windows 构建明确拒绝平台操作，纯缓冲区和单次控制测试仍可运行。
-package ipcexperiment
+package ipc
 
 import (
 	"fmt"

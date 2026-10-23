@@ -1,254 +1,139 @@
-# 内网通 WM_COPYDATA 业务 IPC 契约
+# 内网通 WM_COPYDATA 业务 IPC 契约与证据
 
-本文整理业务文本发送 IPC 的已有静态证据、未恢复字段及后续任务，不是可直接实现的发送协议说明。
+本文维护当前结论、接收端字段和静态证据索引，不是完整厂商 SDK。**已验证的实施路线以 [validated-route.md](validated-route.md) 为准**；维护模块或判断下一步工作时先读该文，不从历史阶段的“下一轮任务”重新开始逆向。
 
-**阶段八更新**：用户另行要求按已确认的接收行为设计单次受控实验，不冒充厂商完整结构，见 [阶段八报告](../reports/ipc-phase8/ipc-phase8-report.md)。实验程序已实现并通过本地测试；运行 EXE 的磁盘 SHA-256 与静态对象完全一致，但当前 Resolve 返回 `ambiguous candidates=2`，且操作者选择先完成程序与测试，未提供群 ID 或确认实际发送，因此没有调用内网通业务 IPC。当前仍不能进入正式 Adapter 开发。下文“不能编写发送器”及生产者恢复要求保留为第五、七阶段的完整协议判断；不改变本轮独立实验的授权范围。正式协议的容量、总长和生产者 `cbData` 仍未恢复，实验长度 322 字节不得当作厂商协议值。
+## 1. 当前结论与验证范围
 
-**阶段九更新**：操作者手动关闭附加窗口后，386 五次只读采集均为唯一候选，连续 Resolve 和完整身份预检通过；账号与测试群成员资格由操作者确认。准确的 QGROUP_ID 尚未取得，程序授权群仍为空，首次发送准备未完成，没有向内网通发送消息。见[阶段九报告](../reports/ipc-phase9/ipc-phase9-report.md)，其中包含窗口元数据、群 ID 获取与本地填写要求、发送前检查表。上面的阶段八歧义是历史结果，不是本轮复检结果。
+**原0001方式已成功送达。** `2026-10-23T06:40:27.9898784Z` 的独立复验使用原载荷和原 Win32 实现，API=1、错误0、LRESULT=1、1ms、未超时、调用后客户端存活；操作者随后明确确认独立接收端在正确原生群按本次时间新增一条，发送者和正文正确，最终为 **`recipient_observed`**。见[原0001方式复验报告](../reports/ipc-phase12/0001-original-method-confirmation.md)。迁移到 `internal/ipc` 后，另行授权的04复验于 `2026-10-23T07:14:23.1251137Z` 再次送达，API=1、错误0、LRESULT=1、1ms、未超时，独立接收端确认新增一条、发送者正确；见[重构后复验报告](../reports/ipc-phase12/ipc-refactor-confirmation-04.md)。
 
-**群 ID 只读获取研究更新**：已静态恢复群元数据存储为 `<数据根目录>\data\qrp` SQLite 文件，`QGroupInfo_<内部身份标识>` 表中的 `Name → QGroupId` 对应群名称与原生 QGROUP_ID；`PriKey` 不是群 ID。路径选择、字段传递、Evidence 和 Windows 只读步骤见[群 ID 获取报告](../reports/qgroup-id/qgroup-id-report.md)。本轮未读取 Windows 实际数据库，真实授权群 ID 仍未取得，未修改发送授权或发送消息。
+| 项目 | 当前依据 |
+|---|---|
+| 客户端 | 内网通 3.4.3055，Windows x86 / 原生 C++ / SkinUI |
+| 样本 SHA-256 | `e7caef3fe744f9fe6ba90dd1d53b7e64241cb54020a8bf37be5e756e2fe881b1` |
+| 已验证发送端 | Go Windows 386，正常授权客户端身份，同用户/完整性、session 和 desktop |
+| 已验证业务 | `group_id`，唯一授权原生群，固定 ASCII 正文 `NWT-GW-AUTH-TEST-0001` |
+| 实现 | `internal/ipc`非交互式Adapter，配置读取和发送返回结构化结果；实验交互仅在 `cmd/ipcexperiment` |
+| 实验长度 | 322 字节，三个 UTF-8 字符串的 NUL 均在传送区内；不是厂商结构总长 |
+| 成功任务 | 原方式03、迁移后04、正式Adapter直接调用05均获独立接收确认；各自日志保留，未自动重试 |
+| 当前真实发送 | 已停止；模块重构只测试和构建，不产生新增发送授权 |
 
-## 1. 范围与当前结论
+生产者完整结构、字段容量、生产者 `cbData`、任意正文上限/转义仍未恢复；这些未知项**不撤销固定用例已成功的事实，也不再作为复用该用例的前置恢复任务**。不扫描长度、不追加猜测字段、不开放任意文本。静态事实、运行验证和未知范围分别标注，不互相替代。
 
-- 软件：内网通 3.4.3055，Windows x86 / 原生 C++ / SkinUI。
-- 客户端：`/root/reverse-lab/extracted/app/ShiYeLine.exe`。
-- SHA-256：`e7caef3fe744f9fe6ba90dd1d53b7e64241cb54020a8bf37be5e756e2fe881b1`。本轮只读计算的样本哈希与历史证据、快照一致。
-- 历史分析工具：REA 6.7.0 + Ghidra 12.1.4，ImageBase `0x400000`。下文地址均为静态 VA；`FUN_` 名称是分析器生成的名称。
-- 初次整理只复用了历史资料；第五阶段和第七阶段继续进行只读静态分析，见 [第五阶段报告](../reports/ipc-phase5/ipc-phase5-report.md) 和 [第七阶段报告](../reports/ipc-phase7/ipc-phase7-report.md)。[阶段六窗口探测](../../tools/windowprobe.md#阶段六手动状态测试记录与标准)由操作者在 Windows 完成；不涉及 IPC 发送。本轮未运行客户端、未发送消息、未修改 EXE、未生成发送器。
+静态地址均以 ImageBase `0x400000` 记载；运行地址按实际加载基址换算。历史分析工具为 REA 6.7.0 / Ghidra 12.1.4，`FUN_` 是分析器名称。
 
-**已确认（静态）**：`0x449c60` 的业务分支比较 `dwData == 0x0fecf10f`，从 `lpData + 0x000 / 0x064 / 0x12c` 分别读取选择器、目标值和正文，均经 UTF-8 转换后进入 `0x4c41b0`。`user_id` 和 `group_id` 分支分别调用既有原生单聊和群聊发送过程。[E22、E23]
-
-**尚未恢复**：生产者载荷结构、字段容量、`cbData` 合法值、正文上限及异常/超时行为。因此目前不能编写实际发送器。第七阶段进一步区分了 UTF-8 源读取与动态宽字符串缓冲区；发行文件搜索仍未找到文本生产者。阶段六已验证部分窗口状态的候选稳定及歧义拒绝，但 CMainDialog/业务处理器身份、IPC 可达性尚未验证。第五阶段的正常 `LRESULT=1`、窗口创建及字面 `\r\n` 到 CRLF 替换结论保持不变。
-
-证据状态的含义：
-
-- **已确认（静态）**：已有指令或伪代码直接支持，不代表执行时已验证。
-- **强推断**：已有数据流支持，但仍缺少生产者或完整实现证据。
-- **未知 / 未验证**：现有证据不足，或必须在另行授权的运行测试中确认。
-
-## 2. 已确认的接收端字段
+## 2. 接收端字段与实验值
 
 ### 2.1 COPYDATASTRUCT
 
-以下是目标 x86 接收端的结构访问，不是跨架构发送端的布局承诺。
+以下结构访问来自目标 x86 接收端，不是跨架构布局承诺。
 
-| 项目 | 静态事实 | 证据位置 |
+| 项目 | 已确认事实 | 依据 |
 |---|---|---|
-| 处理入口 | `0x449c60` 接收 `tagCOPYDATASTRUCT *`；空结构指针有提前返回路径 | E22-P；E22-I：`0x449ca0–0x449cb4` |
-| `dwData`（结构偏移 `+0x0`） | `0x449cb4` 从结构首 DWORD 取值，`0x44a119` 与 `0x0fecf10f` 比较；该常量直接对应本版本文本发送分支，不是 `lpData` 内的字段 | E22-I |
-| `cbData`（结构偏移 `+0x4`） | 在 `0x44a119–0x44a246` 文本业务分支中未见读取，也未见按该值限制三个字符串的读取 | E22-I |
-| `lpData`（结构偏移 `+0x8`） | `0x44a124` 从 `[EDI + 0x8]` 取载荷基址，再读取三处字符串 | E22-I |
-| 后续处理 | 业务分支执行后仍在 `0x44a255` 调用 `CSkinDialog::OnCopyData @ 0x522c70` | E22-P、E22-I |
+| 入口 | `0x449c60` 接收 `COPYDATASTRUCT *`，有空结构指针提前返回分支 | E22-P/I |
+| `dwData`，结构 `+0x0` | 文本分支比较 `0x0fecf10f`，不是 lpData 内的字段 | `0x449cb4 / 0x44a119`，E22-I |
+| `cbData`，结构 `+0x4` | 已复核文本分支没有读取它或按它限制三个字符串 | `0x44a119–0x44a246`，E22-I |
+| `lpData`，结构 `+0x8` | 取载荷基址后读取三个字符串 | `0x44a124`，E22-I |
+| 后续 | 业务执行后仍调用基类 `CSkinDialog::OnCopyData @ 0x522c70` | `0x44a255`，E22-P/I |
 
-`cbData` 未在上述分支中读取，**不等于可以传 0 或任意长度**。第五阶段已复核：上层消息映射不按该值校验文本长度；基类在本业务 `dwData` 下只比较消息类型，跳到 `0x523161`，不读取 `cbData/lpData`。Windows 仍按 `cbData` 传送数据；当前文档不指定协议最小长度或固定总长度。为使已知三个源字符串的读取保持在传送区内，它们的终止 NUL 必须计入所提供的数据，见第 2.4 节；这不证明生产者的完整结构长度。[第五阶段 N8、N9；E22-I]
+Windows 仍按 `cbData` 复制传送区；接收分支不读取它不等于可传0或任意值。第五阶段确认上层消息映射不校验文本长度，基类本业务分支跳到 `0x523161`，不额外读取 cbData/lpData。[第五阶段 N8/N9]
 
-历史入口还比较了 `0x0fe1c10b`、`0x0fecf10b`、`0x0fecf10e`，它们不是本次文本发送契约，不能混用。[E22-P、E22-I]
+本次发送端与接收端均为386：COPYDATASTRUCT为12字节，载荷322字节。amd64结构24字节仅经ABI测试，不代表实际发送已验证。其他业务常量 `0x0fe1c10b / 0x0fecf10b / 0x0fecf10e` 不属于本用例，不混用。
 
-### 2.2 lpData 三个字符串区域
+### 2.2 三个字符串
 
-| 起始字节偏移 | 已确认用途 | 接收端编码与读取方式 | 容量 / 合法长度 | 依据 |
-|---|---|---|---|---|
-| `0x000` | 目标选择器，如 `user_id`、`group_id` | UTF-8，读取到 NUL，再转换为宽字符串 | 未知 | `0x44a124–0x44a156`；转换结果作为 `0x4c41b0` 的 `ECX` 输入 |
-| `0x064` | 目标值，由选择器决定按用户 ID、群 ID、名称或 IP 解释 | 同上 | 未知 | `0x44a16c–0x44a19b`；转换结果作为栈参数传给 `0x4c41b0`，其后用于目标查找 |
-| `0x12c` | 消息正文 | 同上 | 未知 | `0x44a1b1–0x44a1e3`；转换结果作为 `EDX` 输入，随后传给正文构造函数 |
-
-以上字段用途由 E22-I 的调用前寄存器/栈准备与 E23-I 的参数使用共同确认：
-
-- `0x44a1f9–0x44a20f`：将目标值压栈，将正文放入 `EDX`，将选择器放入 `ECX`，调用 `0x4c41b0`。
-- `0x4c41e5 / 0x4c41ee / 0x4c4200`：分别保存目标值、选择器、正文。
-- `0x4c42a1–0x4c42a6`：将正文传给 `0x4b8470`；后续选择器比较和 ID 查找使用另外两个输入。
-
-不能把偏移差 `0x64`、`0xc8` 当作合法字段容量，也不能据此声明结构是 `char[100] + char[200] + char[N]`。最后一个字段的末尾、完整结构大小、填充和其他字段均未知。
-
-### 2.3 编码与终止规则
-
-三个区域均调用 `0x44cbd0`，调用点为 `0x44a130`、`0x44a178`、`0x44a1c0`。[E22-I]
-
-该函数两次调用：
-
-```text
-MultiByteToWideChar(0xfde9, 0, source, -1, ...)
-```
-
-`0xfde9 == 65001`，即 CP_UTF8；输入长度 `-1` 表明接收端按 NUL 终止字符串读取。[E22-U]
-
-**已确认的是接收端读取方式**，不是生产者的完整写入规则。第七阶段已将两次 API 调用与汇编参数逐项核对：第一次查询宽字符数，再分配相应字节，第二次仍用源长度 `-1`。第二次调用中的目标容量不是 UTF-8 源长度上限。`dwFlags=0` 未启用 `MB_ERR_INVALID_CHARS`；Microsoft 规定 Vista 以后非法序列替换为 U+FFFD，不能声称客户端严格拒绝非法 UTF-8；完整业务结果仍未验证。仍未知各字段容量、完整结构总大小、未使用区域的写法和超长正文处理；不得用畸形或越界载荷测试这些问题。详见 [第七阶段报告](../reports/ipc-phase7/ipc-phase7-report.md)。
-
-### 2.4 第七阶段：源读取边界与必要输入条件
-
-以下是对**已知接收路径**的内存安全要求，不是已恢复的发送协议，也不是充分的发送许可。
-
-- `0x449ca9` 只检查 `COPYDATASTRUCT *`；文本分支 `0x44a124` 取 `lpData` 后，未检查其为空，也未检查 `lpData + offset` 是否落在 `cbData` 内，即进入转换。相邻其他业务分支的载荷空指针检查不能套用于本分支。[E22-I]
-- 三个源均直接交给 `0x44cbd0`。在转换前没有按 100/200 字节复制到本地定长 UTF-8 数组，没有 `strnlen` 或按 `cbData` 截断。若 NUL 不在传送区内，转换可能继续读区外字节或触发访问异常；没有观察或测试该异常。[E22-I、E22-U；第七阶段转换指令]
-- 转换后的宽字符串是另一块内存：`0x44cc24–0x44cc43` 按查询结果乘 2 分配并清零；`0x44cc66–0x44cc79` 查宽 NUL 后赋值。对象中的 `7/8` 是小字符串内联存储与堆存储的选择，不是源字段容量，更不是消息上限。第七阶段独立汇编覆盖 `0x408330`、`0x408420` 和 `0x408140` 的赋值、复制及增长过程。
-- `0x44a20f` 传给业务函数的是三个已构造的宽字符串，未继续传递原始 `lpData` 或 `cbData`。在这条已复核正常路径及基类本业务分支中，没有发现独立的第四字段读取；这不证明生产者结构没有尾部保留字段。正文后的任意字节也可能仍属于正文，直到首个 NUL。[E22-I；第五阶段 N8]
-
-令 `B` 是 Windows 实际传送区，`C = cbData`；对每个起点 `o ∈ {0, 0x64, 0x12c}`，令 `n_o` 是该处字符串在首个 NUL 前的 UTF-8 字节数。要使这三次源读取均不越过 `B`，必须满足：
-
-```text
-lpData 指向有效、连续且在发送期间不变的传送数据
-0 ≤ o < C
-B[o : o+n_o] 是本次完整字符串，B[o+n_o] == 0
- o+n_o < C                    # 终止 NUL 也在 cbData 覆盖范围内
-```
-
-该不等式是源读取所需的包含关系，不是 `cbData` 的取值方案。字符串写入还不能相互覆盖；首次用例使用精确 `group_id`、一个独立授权群 ID、非空合法 UTF-8、无嵌入 NUL 的固定 ASCII 正文。**在生产者结构、总大小、字段容量及填充未确认前，不据此创建载荷或编写发送器。**
-
-## 3. 目标选择、正文与发送调用
-
-### 3.1 选择器
-
-| 选择器 | 字符串地址 | 已有静态行为 | 网关首版范围 |
+| lpData偏移 | 静态用途 | 成功用例 | 容量状态 |
 |---|---|---|---|
-| `user_name` | `0x9d158c` | 查找名称匹配的用户集合，再遍历发送 | 禁用 |
-| `user_ip` | `0x9d15a0` | 按 IP 查找用户集合，再遍历发送 | 禁用 |
-| `user_id` | `0x9d15b0` | `0x4c4499 → 0x4f48d0 → 0x4f49e0`，随后遍历调用单聊发送 | 仅允许一个授权 ID |
-| `group_name` | `0x9d15c0` | 查找名称匹配的群集合，再遍历发送 | 禁用 |
-| `group_id` | `0x9d15d8` | `0x4c4387 → 0x4ee740 → 0x4edfc0`，随后遍历调用原生群发送 | 仅允许一个授权 ID |
+| `0x000` | 选择器，经转换后作为 `0x4c41b0` 的 ECX 输入 | `group_id`，NUL在 `0x008` | 厂商容量未知 |
+| `0x064` | 目标值，作为栈参数传给目标查找 | 本地配置的唯一原始 QGroupId，32个十六进制字符 | 不把200字节偏移差当作容量 |
+| `0x12c` | 正文，经转换后作为 EDX 输入 | 21字节 `NWT-GW-AUTH-TEST-0001`，NUL在 `0x141` | 厂商正文上限未知 |
 
-选择器字符串地址由补充证据 S1 确认，分支和查找调用由 E23、E25 确认。名称匹配存在多目标发送路径；仅接受 ID 是项目的限制，不是客户端只支持这两种选择器。
+调用点为 `0x44a124–0x44a1e3`；`0x44a1f9–0x44a20f` 的寄存器/栈准备与 E23 参数使用共同确认用途。[E22-I、E23-I]
 
-ID 的字符集合、大小写规则、空白处理及目标值是否存在列表语法尚未恢复；不得根据选择器名称补造这些规则。
+固定实验缓冲区先清零，再原样写入三个字符串，`cbData=0x142=322`。偏移差不是 `char[100]+char[200]+char[N]` 的结构证据，空隙不是已恢复的厂商保留区。[阶段八第4节]
 
-### 3.2 调用顺序与正文构造
+### 2.3 UTF-8、终止与读取范围
 
-```text
-主窗口业务处理 0x449c60
-  → 比较 dwData，取三处 UTF-8 字符串并转换
-  → 0x44a20f 调用 0x4c41b0
-  → 正文替换处理（CStringHelper::Replace @ 0x568ef0）
-  → 0x4c42a6 调用正文构造 0x4b8470
-  → 按选择器查找目标并发送
-```
+三个字符串分别在 `0x44a130 / 0x44a178 / 0x44a1c0` 调用 `0x44cbd0`；它两次使用 `MultiByteToWideChar(65001,0,source,-1,...)`，即 UTF-8、NUL终止。[E22-U；第七阶段转换指令]
 
-第五阶段已核实：`0x9b6860` 是真正 CRLF，`0x9d1580` 是四字符字面串 `\r\n`；`0x4c4240–0x4c4253` 将后者作为查找串、前者作为替换串传入 `CStringHelper::Replace @ 0x568ef0`。因此该步骤把字面 `\r\n` 转为 CRLF，不是通用转义协议；单独 `\n`、XML 特殊字符等完整处理仍未知。完整指令、字节与 Evidence ID 见第五阶段报告 A 节、N10–N13。
+- 查询宽字符数后按需要分配宽字符串，再转换；宽缓冲区大小不是 UTF-8 源容量。字符串对象的7/8是内联/堆存储选择，也不是消息上限。[第七阶段 P1]
+- `dwFlags=0` 不启用严格非法UTF-8拒绝；不能声称任意非法序列会被客户端拒绝。
+- 文本分支没有按 cbData 截断、strnlen 或先按100/200字节复制。NUL不在传送区内会导致区外读取风险；未进行该类异常实验。
+- 正文后到首个NUL之前仍可能属于正文；已复核正常路径和基类没有独立第四字段读取，这不证明生产者没有尾部字段。
 
-`0x4b8470` 构造客户端自身的消息内容，包含 `shiyeline` 字面值及后续构造调用。[E24] 这支持“传入正文，由客户端构造内部消息”的判断；不要求发送端拼造 `X_SEND_MSG` 网络 XML。完整格式、转义规则和长度检查仍未知。E24 的伪代码在若干释放函数调用后被分析器截断，不能把它视为完整格式定义。
+令传送区为B，C=cbData；对于每个起点 `o ∈ {0,0x64,0x12c}`、NUL前的字节数n，必要条件为 `0 ≤ o < C` 且 `o+n < C`，`B[o+n]==0`；字段不得相互覆盖。成功用例满足这些条件，**条件本身不是任意长度发送许可**。原第七阶段“不能据此编写发送器”的结论是当时完整厂商契约的判断；后续明确授权的固定实验已有独立接收成功证据。
 
-### 3.3 单聊
+## 3. 目标解析与正文处理
 
-```text
-user_id
-  → 0x4f48d0 → 0x4f49e0（用户查找，未解析 ID 可创建状态 4 的本机记录）
-  → 0x4c44dd 调用 0x4b9320（既有原生单聊发送）
-```
+| 选择器 | 字符串地址 | 静态行为 | 当前模块范围 |
+|---|---|---|---|
+| `group_id` | `0x9d15d8` | `0x4ee740 → 0x4edfc0` 查现有群表，`0x4b9c80 → 0x617600` 原生群发送 | 唯一已验证并采用 |
+| `user_id` | `0x9d15b0` | `0x4f48d0 → 0x4f49e0 → 0x4b9320`；未知用户可创建状态4本机记录 | 只有静态证据，不开放 |
+| `group_name` | `0x9d15c0` | 查名称匹配集合并遍历 | 不采用 |
+| `user_name` | `0x9d158c` | 查名称匹配用户并遍历 | 不采用 |
+| `user_ip` | `0x9d15a0` | 按IP查用户集合并遍历 | 不采用 |
 
-依据：E23-I、E25-U、补充 E16。未知用户 ID 不保证被拒绝，不能将 IPC 处理完成解释为“目标有效”或“已联网发送”。原生单聊更下游的消息封装与 ACK 证据见历史报告第 2 节；本轮不重复复制。
+依据为 E23、E25、S1、补充E16。ID完整语法、大小写/空白规则及列表语法未恢复；当前原样使用已取得的唯一ID，不据名称补造规则。
 
-### 3.4 原生群聊
+正文在 `0x4c41b0` 中先经 `CStringHelper::Replace @ 0x568ef0`，再于 `0x4c42a6` 进入 `0x4b8470` 构造客户端自身内容。[E23-I、E24]
 
-```text
-group_id
-  → 0x4ee740 → 0x4edfc0（查现有群表）
-  → 0x4c43c9 调用 0x4b9c80
-  → 0x617600（CQGroupMgr::SendMsg）
-```
+第五阶段N10–N13确认：`0x9d1580` 是四字符字面串 `\r\n`，`0x9b6860` 是实际CRLF；`0x4c4240–0x4c4253` 把前者替换成后者。不能推导通用转义，单独换行、XML特殊字符和任意长度不在成功用例范围内。发送端不需要手拼原生网络XML。
 
-依据：E23-I、E23-G、E25-G1、E25-G2。`0x617600` 检查群、正文和本机成员条件；失败分支包含 `I'm not in qgroup %s` 日志。成员遍历中调用 `0x6114f0`，函数没有汇总各成员的送达结果。[补充 E19]
+UI群表与原生管理器群表不同。`0x617600` 还检查管理器字段、群ID和构造后正文非空；其资格函数 `0x61afe0` 在找到群后，`0x61b02e–0x61b04b` 有本机ID相等即成功的分支，不是完整群权限校验。成员投递调用 `0x6114f0`，不汇总成员送达。[E19；群状态续查]
 
-这是原生群发送，不是向多个联系人逐次发送私聊。`0x617600` 的内部返回值也没有由这条 IPC 调用过程作为结构化群投递结果返回给调用方。
+## 4. 返回值、窗口与运行事实
 
-## 4. 返回值、窗口和身份约束
+- `OnMessage @ 0x535d50`、`WindowProc @ 0x535bc0` 的正常WM_COPYDATA映射预置结果1，不保存业务处理器EAX；查群为空或下级失败也可能得到1。只有独立接收观察才是本次送达证据。[第五阶段N9、N22–N26]
+- 候选的 CMainDialog 身份已在一次授权观察中通过虚表及对象内HWND确认；当前发送仍每次重新Resolve，不依赖旧PID/HWND或调试器。任意UI状态、多实例/跨会话及标准最小化未全部验证。[窗口绑定续查]
+- 成功发送验证了当前同用户、完整性、session、desktop下的386调用可达性；没有修改UIPI、提权、注入或读取凭据。
+- 342字节快照确认当时授权ID在UI/原生两张群表中均存在；121字节快照确认当时成员集合非空、路由表非空、传输对象字段非零。它们只证明当时元数据，不追溯首次调用轨迹，也不是每次发送的前置操作。
+- 0002未实际调用；观察器等待超时和控制台问题不是IPC发送失败。成功复验没有使用观察器。
+- `unknown`表示缺少接收证据；程序因UI观察unknown退出码1不等于没有调用。补充接收观察另行保存，不改写原始事件。[成功复验报告]
 
-### 静态已知
-
-- 业务调用后继续进入 `0x522c70` 基类处理。第五阶段追踪消息映射确认：正常返回路径的窗口 `LRESULT` 固定为 1，处理器 `EAX` 被忽略；群查找为空或资格不足时，只要正常返回也可得到同一个 1。证据为 `OnMessage @ 0x535d50`、`WindowProc @ 0x535bc0` 的原始指令及跳转表，完整 Evidence ID 见第五阶段报告 D 节、N8、N9、N22、N23、N25、N26。[E22-I]
-- 现有业务处理代码没有向调用方构造包含消息 ID、网络 ACK 或群成员结果的结构化响应。[E22、E23]
-- IPC 返回不能等同消息送达；群发送内部返回也不代表全部成员收到。[E22、补充 E19]
-- 在已检查的文本分支中未见独立口令、签名或来源进程校验；这不是整个窗口处理和 Windows 消息访问均无校验的证明。[E22]
-
-### 未知 / 未验证
-
-- 异常、超时、客户端退出或启动未完成时的实际调用行为；正常映射结果为 1 不提供业务失败原因。
-- 阶段六已只读观察显示、托盘隐藏、恢复和一次重启；单候选在这些状态内稳定，新增 SkinDialog 时 `ambiguous` 并拒绝定位，重启后拒绝旧 Target。仍未证明候选对应 CMainDialog/`0x449c60`，不覆盖任意 UI 状态、标准 `IsIconic=true` 最小化或跨会话/多实例。详见 [窗口探测阶段六记录](../../tools/windowprobe.md#阶段六手动状态测试记录与标准)。静态创建及分发证据仍为第五阶段 N15–N23。
-- 发送方 HWND 的运行要求、会话/desktop 与 UIPI 的实际可达性；跨位数调用尚未验证。第五阶段已查明平台规定及已检查分发函数没有发送方身份验证，不能因此省略网关自己的授权。
-- 未登录与对象初始化/连接字段的对应关系、完整群角色/禁言权限及离线群成员补发行为。
-
-后续验证必须使用正常登录的授权客户端身份，不通过提权、注入、修改消息过滤或认证绕过取得访问。
+未恢复完整角色/禁言、异常时业务状态、离线补发、全群ACK；跨位数与任意文本不开放。下一步不再重复接收端逆向、生产者搜索或调试执行点等待；停止的路线见 [validated-route.md 第3节](validated-route.md#3-停止继续验证的路线)。
 
 ## 5. 证据索引与复用方式
 
-证据目录：[gateway-static](../reports/gateway-static/)。原始报告：[gateway-report.md](../reports/gateway-static/gateway-report.md)，业务入口见第 4 节，E22–E25 的历史编号见其证据索引。
+以下后缀仅供定位，不改变原始Evidence ID。优先读取相应小文件，不一次加载完整包。
 
-下表 `E22-P` 等后缀仅用于本文定位；原始 Evidence ID 保持不变。单次查询 JSON 的 `response.result.structuredContent` 本身就是证据记录，可按其 `evidence_id` 对照证据包；关键指令地址见前文。
-
-| 本文标记 / 历史分组 | 函数与内容 | 单次查询文件 | 完整 Evidence ID |
+| 标记 | 函数/内容 | 单次查询文件 | 完整 Evidence ID |
 |---|---|---|---|
-| E22-P / E22 | `0x449c60` 接收端伪代码 | [0082-procedure_pseudo_code.json](../reports/gateway-static/0082-procedure_pseudo_code.json) | `ev_acdffca2137a48fa2ca47862b1048633f8e329196bea438815a8e8d5be8a1a53` |
-| E22-I / E22 | `0x449c60` 指令，字段及调用点 | [0107-read_function_instructions.json](../reports/gateway-static/0107-read_function_instructions.json) | `ev_54eb49153b17019a3fd40ec4b7410c9fbb28af0820a320ffb94ee230a3a3e3fa` |
-| E22-U / E22 | `0x44cbd0` UTF-8/NUL 读取 | [0102-procedure_pseudo_code.json](../reports/gateway-static/0102-procedure_pseudo_code.json) | `ev_55e9d1c18e869d695db7bbce0670183a838e02cb8b886ed62a29e9af0c7d477d` |
-| E23-P / E23 | `0x4c41b0` 分流伪代码 | [0086-procedure_pseudo_code.json](../reports/gateway-static/0086-procedure_pseudo_code.json) | `ev_7d8dd8829f020ce87d0522d93c760f1e1a4a77f9b512caa91d079d5a14eb186c` |
-| E23-I / E23 | `0x4c41b0` 指令及参数使用 | [0108-read_function_instructions.json](../reports/gateway-static/0108-read_function_instructions.json) | `ev_1ac48d41a61fa5a2855f4b68d9a83c51a57b894e0ad06e82fcec0ba285e9b307` |
-| E23-G / E23 | `0x4b9c80 → 0x617600` | [0096-procedure_pseudo_code.json](../reports/gateway-static/0096-procedure_pseudo_code.json) | `ev_2032cf47084fb7c1f2b0885ad292b86c19c8b20d41ef4a3ee170239e197a2674` |
-| E24 / E24 | `0x4b8470` 正文构造 | [0103-procedure_pseudo_code.json](../reports/gateway-static/0103-procedure_pseudo_code.json) | `ev_1494a83ac2f8c587de7cec975a7e084c5e8a7e96e91a7af0e29fb23d853d5c12` |
-| E25-U / E25 | `0x4f48d0` 用户 ID 查找 | [0100-procedure_pseudo_code.json](../reports/gateway-static/0100-procedure_pseudo_code.json) | `ev_552d8130062183f991aad5619b6679c5111ba9594da430ef5df113ab6252288d` |
-| E25-G1 / E25 | `0x4ee740` 群查找包装 | [0095-procedure_pseudo_code.json](../reports/gateway-static/0095-procedure_pseudo_code.json) | `ev_e634e94298a89381b255a69e1b83322cd1e97c15d4db057e6751ecb97be5f613` |
-| E25-G2 / E25 | `0x4edfc0` 群表查找 | [0101-procedure_pseudo_code.json](../reports/gateway-static/0101-procedure_pseudo_code.json) | `ev_f56396820bc581983dc5b523e7726d4d4dbd5466ee3b3b412dd30438a0667f79` |
-| 补充 S1 | 五个选择器的字符串地址 | [0116-search_strings.json](../reports/gateway-static/0116-search_strings.json) | `ev_9bf29a6ba84e4a7fff249d8f20cd34fa7ee1d778816a81df099480749aec6d30` |
-| 补充 E16 | `0x4f49e0` 未解析用户状态 4 | [0110-procedure_pseudo_code.json](../reports/gateway-static/0110-procedure_pseudo_code.json) | `ev_c959dd3d77da1c1e1c7f25b787e766d99d24706a731aaae8c3c96ee3e2e20cf6` |
-| 补充 E19 | `0x617600` 群成员检查与遍历发送 | 证据包内按 ID 查询；历史报告第 3 节 | `ev_17d599ba7a6250a059051f51594bdcf6194448246f10f3ac131758f1b83d01b0` |
+| E22-P | `0x449c60` 接收端伪代码 | [0082](../reports/gateway-static/0082-procedure_pseudo_code.json) | `ev_acdffca2137a48fa2ca47862b1048633f8e329196bea438815a8e8d5be8a1a53` |
+| E22-I | 入口指令、字段和调用点 | [0107](../reports/gateway-static/0107-read_function_instructions.json) | `ev_54eb49153b17019a3fd40ec4b7410c9fbb28af0820a320ffb94ee230a3a3e3fa` |
+| E22-U | `0x44cbd0` UTF-8/NUL | [0102](../reports/gateway-static/0102-procedure_pseudo_code.json) | `ev_55e9d1c18e869d695db7bbce0670183a838e02cb8b886ed62a29e9af0c7d477d` |
+| E23-P | `0x4c41b0` 分流 | [0086](../reports/gateway-static/0086-procedure_pseudo_code.json) | `ev_7d8dd8829f020ce87d0522d93c760f1e1a4a77f9b512caa91d079d5a14eb186c` |
+| E23-I | 分流寄存器与参数 | [0108](../reports/gateway-static/0108-read_function_instructions.json) | `ev_1ac48d41a61fa5a2855f4b68d9a83c51a57b894e0ad06e82fcec0ba285e9b307` |
+| E23-G | `0x4b9c80 → 0x617600` | [0096](../reports/gateway-static/0096-procedure_pseudo_code.json) | `ev_2032cf47084fb7c1f2b0885ad292b86c19c8b20d41ef4a3ee170239e197a2674` |
+| E24 | `0x4b8470` 正文构造 | [0103](../reports/gateway-static/0103-procedure_pseudo_code.json) | `ev_1494a83ac2f8c587de7cec975a7e084c5e8a7e96e91a7af0e29fb23d853d5c12` |
+| E25-U | `0x4f48d0` 用户查找 | [0100](../reports/gateway-static/0100-procedure_pseudo_code.json) | `ev_552d8130062183f991aad5619b6679c5111ba9594da430ef5df113ab6252288d` |
+| E25-G1 | `0x4ee740` 群查找包装 | [0095](../reports/gateway-static/0095-procedure_pseudo_code.json) | `ev_e634e94298a89381b255a69e1b83322cd1e97c15d4db057e6751ecb97be5f613` |
+| E25-G2 | `0x4edfc0` 群查找 | [0101](../reports/gateway-static/0101-procedure_pseudo_code.json) | `ev_f56396820bc581983dc5b523e7726d4d4dbd5466ee3b3b412dd30438a0667f79` |
+| S1 | 五个选择器字符串 | [0116](../reports/gateway-static/0116-search_strings.json) | `ev_9bf29a6ba84e4a7fff249d8f20cd34fa7ee1d778816a81df099480749aec6d30` |
+| E16 | 未解析用户状态4 | [0110](../reports/gateway-static/0110-procedure_pseudo_code.json) | `ev_c959dd3d77da1c1e1c7f25b787e766d99d24706a731aaae8c3c96ee3e2e20cf6` |
+| E19 | 群条件与成员投递 | [历史报告第3节](../reports/gateway-static/gateway-report.md#3-原生群聊发送过程) | `ev_17d599ba7a6250a059051f51594bdcf6194448246f10f3ac131758f1b83d01b0` |
 
-### 第七阶段新增证据
+第七阶段补充证据及范围见[该阶段报告](../reports/ipc-phase7/ipc-phase7-report.md)：
 
-完整八项查询和覆盖限制见 [第七阶段证据索引](../reports/ipc-phase7/ipc-phase7-report.md#本轮新增-rea-evidence)。下列证据补充第 2.4 节，不替代生产者结构证据：
-
-| 内容 | 完整 Evidence ID |
+| 内容 | Evidence ID |
 |---|---|
-| `0x44cbd0` 两遍转换、按查询结果分配 | `ev_89899b27794c743dad2e0e08164ad975f47b4c9993105d152c4258592679e4aa` |
-| `0x408420` 宽 NUL 扫描及构造指令 | `ev_d8bb8efc5399871153317b3d866de24dea186b4ba062cc70f3aa3e3bed0f6689` |
-| `0x408330` 赋值、容量比较和复制指令 | `ev_33c18e9ef572ab3daf082349d2cce74e5cdb02fa064fcca580eddeac16d64e67` |
-| `0x44cc7e` 起 32 字节，含释放后清理与返回 | `ev_c8de904833360d72b27329bacfc09022a8fa323cccc9e9422ea31b1d089bf981` |
+| 两遍转换和宽缓冲分配 | `ev_89899b27794c743dad2e0e08164ad975f47b4c9993105d152c4258592679e4aa` |
+| `0x408420` 宽NUL扫描/构造 | `ev_d8bb8efc5399871153317b3d866de24dea186b4ba062cc70f3aa3e3bed0f6689` |
+| `0x408330` 赋值/复制/增长 | `ev_33c18e9ef572ab3daf082349d2cce74e5cdb02fa064fcca580eddeac16d64e67` |
+| `0x44cc7e` 释放后清理 | `ev_c8de904833360d72b27329bacfc09022a8fa323cccc9e9422ea31b1d089bf981` |
 
-新增包 [ipc-phase7-evidence.json](../reports/ipc-phase7/ipc-phase7-evidence.json) 只含本轮 8 条记录，样本身份和 analysis profile 与历史一致；已导出并关闭分析资源。`0x408140` 的 REA 指令只覆盖增长入口，后段由 [focused-objdump.json](../reports/ipc-phase7/focused-objdump.json) 独立文件解码补充；不把不完整函数体说成完整分析。
+历史完整包和分析快照均含245条相同证据，样本身份一致，analysis profile digest为 `7810ea9437da59780820ec6fedb47ce47390841a95d527ddb6c3b3700fe180cb`。快照只有1条primitive及1条workflow缓存，不是完整Ghidra工程，不保证任意查询离线重放；包的unknowns为空不表示协议没有未知项。Ghidra把部分 `0x87fc86` 调用标成hasNoReturn，可能截断伪代码，完整行为优先对照原始指令。导出/关闭回执 `0120 / 0121` 的临时路径只是历史位置，使用仓库实际文件。
 
-### 证据包与快照核对
+## 6. 历史阶段只作证据，不再作为待办
 
-- [gateway-evidence.json](../reports/gateway-static/gateway-evidence.json)：245 条记录，目标身份与当前样本一致；E22–E25 的 10 个 ID 均存在。
-- [gateway-analysis.snapshot.json](../reports/gateway-static/gateway-analysis.snapshot.json)：内嵌的 245 条证据记录与证据包逐条一致；provider 为 Ghidra 12.1.4，analysis profile digest 为 `7810ea9437da59780820ec6fedb47ce47390841a95d527ddb6c3b3700fe180cb`。
-- 快照只有 1 条 primitive 缓存（`read_binary_inventory_summary`）和 1 条 workflow 缓存（`binary_overview`）。它保留证据与恢复信息，不是完整的 Ghidra 工程，也不表示任意新查询都能离线重放。
-- 导出、关闭回执分别是 `0120-export_evidence_bundle.json`、`0121-close_binary.json`。回执里的 `/tmp/shiyeline-gateway-static-WOXZRF/` 是历史导出位置；本仓库中的实际文件应使用上述相对路径。
-- 证据包的 `unknowns` 数组为空，只表示当时未登记 unknown 记录，不表示协议没有未知字段。
-- Ghidra 对若干 `0x87fc86` 调用标记 `hasNoReturn=true`，导致函数体范围不连续、伪代码出现截断；原始类型和函数原型也未完整恢复。字段传递优先引用已有指令，完整函数行为仍需后续逐项核实。
-
-## 6. 下一轮 IPC 契约恢复任务
-
-下表为初始恢复清单。第五阶段的逐项状态及 317 条保存证据见 [ipc-phase5-report.md](../reports/ipc-phase5/ipc-phase5-report.md)；第七阶段的指令复核、发行文件搜索、首次测试条件和停止重复静态分析的建议见 [ipc-phase7-report.md](../reports/ipc-phase7/ipc-phase7-report.md)。当前仍未找到文本载荷生产者。下一步优先寻找匹配版本的外部 SDK、示例或合法生产者；若没有，应另行设计隔离环境中的受控观察，不继续反复反编译接收端来猜长度。每项产出均须带函数/指令地址、完整 Evidence ID 和未解决部分。
-
-| 顺序 | 任务与起点 | 完成标准 |
-|---|---|---|
-| 1 | 从 `0x0fecf10f` 的已有引用、WM_COPYDATA 发送点及相关生产者查找载荷构造 | 找到实际分配、三个字段写入、`COPYDATASTRUCT` 赋值和发送调用；若本 EXE 中未找到，记录搜索范围，不能宣称不存在生产者 |
-| 2 | 恢复生产者的 `cbData`、结构总大小、各字段容量、NUL 与填充规则；对照 `0x44a124–0x44a20f` | 每个长度都有写入或分配证据，说明计量单位、是否含终止符、固定/可变长度；不以字段偏移差代替容量证据 |
-| 3 | 复核 `0x44cbd0`、`0x568ef0`、`0x4b8470` 及必要的直接被调用函数 | 确认转换失败、换行/转义、正文空值和长度限制；需要时仅对受 `hasNoReturn` 影响的相关范围读指令 |
-| 4 | 复核 `0x4c41b0`、`0x4f48d0 / 0x4f49e0`、`0x4ee740 / 0x4edfc0`、`0x617600` | 记录无效 ID、未知用户、无群成员资格和离线分支，以及目标值能否解析成多个对象；区分本机状态变化与实际投递 |
-| 5 | 跟随 `0x449c60` 的上层消息分发、`param_3`、`0x522c70` 与主窗口创建引用 | 恢复最终返回值来源、静态可确定的来源检查、窗口身份和实例选择规则；会话/权限实际可达性仍列为动态待验证 |
-| 6 | 复核本契约的完整性 | 必需字段及长度规则有直接证据，未确认内容逐项列出；在完整协议恢复并复核前保持“不可实现发送器”状态 |
-
-### 完成静态契约后的独立阶段（本轮不执行）
-
-完成并复核完整契约后，才设计 Windows Go 最小验证程序；实际发送仍需明确测试授权：
-
-- 使用正常登录的授权客户端和两个授权测试账号。
-- 只允许一个已确认的原生测试群 `group_id`。
-- 固定消息 `NWT-GW-AUTH-TEST-0001`，只调用一次，不自动重试。
-- 分别记录 IPC 返回、本机可见结果、接收端可见结果；无独立接收证据不得标记已送达，结果不确定时记录 `unknown` 并停止。
-- 单聊测试另行授权，不与首次群测试一起发送。
-
-## 7. 第七阶段结论与首次群聊测试前置条件
-
-**当前未达到“可以编写最小测试发送器”的标准。** 接收端读取行为已更明确，但生产者结构、容量、总大小和 `cbData` 的版本依据仍缺失，不能用第 2.4 节的必要条件替代这些证据。
-
-| 条件 | 当前状态 / 首次测试前的要求 |
+| 资料 | 当时产出与当前用途 |
 |---|---|
-| 完整载荷契约 | 未满足：须提供匹配版本的生产者分配/写入/发送证据或可核实接口说明，包括容量、总大小、NUL、填充及 `cbData` |
-| 客户端身份 | 尚未由探针核实版本/哈希；须确认安装路径、版本和磁盘哈希符合本文样本，并正常登录授权测试账号 |
-| 窗口选择 | 阶段六仅证明已测状态的候选稳定；须人工确认当前实例，关闭附加对话框后重新采集，唯一候选且无问题才继续；不使用历史 PID/HWND |
-| 业务入口身份 | CMainDialog/`0x449c60` 与候选 HWND 的运行绑定未验证；须在另行授权的隔离验证中建立，不向多个候选试发 |
-| 会话与访问条件 | 同一交互 session/desktop、同用户、同完整性级别；实际可达性未验证，不提权、不修改消息过滤；首测选择 Windows 386 是减少变量的设计，不是已证明跨位数不可用 |
-| 群与成员 | 一个明确的原生 `group_id`、仅授权成员、发送账号有正常成员资格；第二授权账号可独立核对固定文本，不读取历史内容 |
-| 单次控制 | 固定 `NWT-GW-AUTH-TEST-0001`，调用前保存尝试记录，仅一次，不自动重试、不广播、不转私聊 |
-| 返回与判定 | 独立记录 API 返回、错误码、窗口结果和耗时；`LRESULT=1` 不计送达；无接收证据、超时或退出均记 `unknown` 并停止 |
-| 实际发送授权 | 本轮没有：实现与执行均为后续阶段，执行前还须明确授权具体群、账号、消息和一次调用 |
+| [历史总报告](../reports/gateway-static/gateway-report.md) | E22–E25和原生协议研究，当前不继续替代路线 |
+| [阶段五](../reports/ipc-phase5/ipc-phase5-report.md) | 字段、窗口分发和LRESULT指令；当时未恢复生产者 |
+| [阶段七](../reports/ipc-phase7/ipc-phase7-report.md) | 读取边界和生产者搜索；当时“不可实现”不覆盖后续获授权固定实验 |
+| [阶段八](../reports/ipc-phase8/ipc-phase8-report.md) | 固定实验载荷与测试，当时未真实调用 |
+| [阶段九](../reports/ipc-phase9/ipc-phase9-report.md) | 关闭附加窗口后唯一定位，当时未取得群ID |
+| [群ID研究](../reports/qgroup-id/qgroup-id-report.md) | `data/qrp`、身份表和Name→QGroupId，非聊天或凭据 |
+| [阶段十](../reports/ipc-phase10/ipc-phase10-report.md) | 私有单群配置绑定与实际预检 |
+| [阶段十一](../reports/ipc-phase11/ipc-phase11-report.md) | 首次调用unknown；其后[窗口绑定](../reports/ipc-phase11/window-binding-followup.md)与[群状态](../reports/ipc-phase11/group-state-followup.md)观察，不再重复 |
+| [阶段十二](../reports/ipc-phase12/ipc-phase12-report.md) | 0002未调用；后改回原方式并取得独立接收成功，见本文第1节 |
 
-阶段六的标准最小化、多轮重启、多实例/跨会话未实测；首次用例应限制在已观察的单实例正常显示状态，不把这些项目默认为通过。授权接收端观察只能证明该接收方可见，不证明全群送达。
-
-**建议停止对同一接收端的重复静态逆向。** 优先寻找匹配版本的外部 SDK、头文件、发送工具或构造示例；当前 849 个发行文件的有限字面搜索没有恢复文本生产者。若无可得样例，下一阶段只设计隔离测试环境和合法生产者 IPC 的被动观察方法，另行确认允许的工具与操作。不得通过扫描 `cbData`、猜固定总长、追加大量零或发送无 NUL/超长载荷恢复契约。文件搜索的范围、两个非文本业务线索、排除项及局限见第七阶段报告。
+当前模块和命令使用见 [internal/ipc说明](../../tools/ipc.md)。后续只围绕已验证路径开发；新业务范围须有明确需求和授权，不从上述历史报告重新启动已停止的恢复任务。
