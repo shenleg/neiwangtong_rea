@@ -1,0 +1,6 @@
+
+Red Hat VirtIO Ethernet Adapter
+ ID 名称                         计数器      方向               数据包             字节 | 方向               数据包             字节 
+ -- --                         ---      --               ---             -- | --               ---             -- 
+  9 Red Hat VirtIO Ethernet... Upper    Rx                46          4,632 | Tx                44          3,676 
+

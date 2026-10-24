@@ -1,0 +1,4 @@
+Capturing on '以太网'
+File: C:\Users\Administrator\AppData\Local\neiwangtong-research\captures\20261025-014922\capture.pcapng
+Packets: 1 Packets: 4 Packets: 5 Packets: 6 Packets: 7 Packets: 11 Packets: 15 Packets: 16 Packets: 17 Packets: 18 Packets: 19 Packets: 20 Packets: 21 Packets: 22 Packets: 23 Packets: 26 Packets: 27 Packets: 28 Packets: 29 Packets: 30 Packets: 31 Packets: 32 Packets: 33 Packets: 34 Packets: 35 Packets: 38 Packets captured: 38
+Packets received/dropped on interface '以太网': 38/0 (pcap:0/dumpcap:0/flushed:0/ps_ifdrop:0) (100.0%)
