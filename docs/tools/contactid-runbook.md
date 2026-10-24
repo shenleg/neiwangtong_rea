@@ -1,6 +1,6 @@
-# 真实联系人 user_id 提取操作指引
+# 真实联系人 user_id / 群 group_id 提取操作指引
 
-本文是"联系人原始姓名 → user_id"的端到端操作流程。**推荐使用 Go 实现**：`internal/contacts` 包（`contacts.Open` / `LoadUsers` / `LookupName`）与 `cmd/contactlookup` 命令，纯标准库实现已验证的 nr codec 与只读 SQLite 解析，无需下载源码或编译 codec DLL。需要审计级严格 schema 检查时可改用 [Python 只读工具](contactid.md)，两者依据同一份[联系人研究](../research/reports/user-id/user-id-report.md)与[codec 报告](../research/reports/nr-codec/nr-codec-report.md)。
+本文是"联系人原始姓名 → user_id"与"群名称 → group_id"的端到端操作流程。**推荐使用 Go 实现**：`internal/contacts`（`contacts.Open` / `LoadUsers` / `LookupName`）与 `cmd/contactlookup` 处理加密联系人库 `nr`；`internal/groups` 与 `cmd/grouplookup` 处理**明文**群库 `qrp`（无需口令）。两者共享 `internal/sqliteread` 的只读 SQLite 解析，无需下载源码或编译 codec DLL。需要审计级严格 schema 检查时可改用 [Python 只读工具](contactid.md)，依据同一批[研究报告](../research/reports/user-id/user-id-report.md)。
 
 本文所有私有路径为占位符，不含任何真实身份、口令或联系人数据。
 
@@ -37,6 +37,23 @@ go build -o contactlookup.exe ./cmd/contactlookup
 
 表名后缀须与私有记录中的本机原始身份后缀一致；多张表时必须人工核实后指定，不能挑第一张。省略 `-name` 输出该表全部用户联系人。库函数用法见 `internal/contacts` 包文档：`contacts.Open(path, password)` 后调用 `LookupName(table, name)`。
 
+## 3b. 用 Go 工具查询群名称 → group_id
+
+群库是 `<数据根目录>\data\qrp`（本实例 Green 分支即 `<EXE目录>\Syl\data\qrp`），**明文 SQLite、无需口令**；群名与 `SendGroup` 目标 ID 的对应在 `QGroupInfo_<本机身份>` 表的 `Name` 与 `QGroupId` 列。副本准备与第 1 节相同（正常退出客户端后复制、哈希核对、拒绝边文件），但**不需要第 2 节的口令文件**：
+
+```bash
+go build -o grouplookup.exe ./cmd/grouplookup
+
+# 确认身份表并输出全部群（group_id 为 QGroupId 列原值）
+./grouplookup.exe -qrp 'C:\私有检查目录\qrp-copy'
+
+# 按群名精确查询
+./grouplookup.exe -qrp 'C:\私有检查目录\qrp-copy' \
+  -table 'QGroupInfo_已核实的本机身份后缀' -name '目标群精确名称'
+```
+
+群名无唯一约束：同名群返回全部候选（退出码 4，`ambiguous`），用群主、创建时间等元数据人工消歧后重新确认，不自动选择。`group_id` 原样使用，不转大写、不加连字符。
+
 ## 4. 结果判读
 
 | 退出码 / `status` | 含义 | 操作 |
@@ -63,4 +80,4 @@ go build -o contactlookup.exe ./cmd/contactlookup
 
 ## 附：测试库重建
 
-`internal/contacts/testdata` 的合成加密库由 `tools/gen_contacts_fixture.py` 生成（依赖仓库内证据文件与 openssl），清单记录密文摘要；测试打开时会校验摘要，不符时重新生成即可。
+`internal/contacts/testdata` 的合成加密库与 `internal/groups/testdata` 的合成明文群库由 `tools/gen_test_fixtures.py` 统一生成（依赖仓库内证据文件与 openssl），清单记录各自摘要；测试打开时会校验摘要，不符时重新生成即可。
