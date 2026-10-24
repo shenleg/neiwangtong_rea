@@ -1,0 +1,6 @@
+
+网络适配器:
+   ID MAC 地址            名称                              
+   -- ------            --                              
+    9 22-22-22-17-40-78 Red Hat VirtIO Ethernet Adapter 
+
