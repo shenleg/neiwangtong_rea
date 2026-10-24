@@ -1,4 +1,4 @@
-// 本程序提供IPC Adapter的命令入口：默认只读，显式发送需要单群配置、请求标识及实验确认。
+// 本程序提供IPC Adapter的实验命令入口：默认只读，显式发送需要单群配置及实验确认，记录标识由Adapter生成。
 package main
 
 import (
@@ -22,12 +22,11 @@ func run(args []string) error {
 	return runWith(args, runExperiment)
 }
 
-func runWith(args []string, execute func(string, ipc.Config, string, bool, io.Reader, io.Writer) error) error {
+func runWith(args []string, execute func(string, ipc.Config, bool, io.Reader, io.Writer) error) error {
 	flags := flag.NewFlagSet("ipcexperiment", flag.ContinueOnError)
 	exe := flags.String("exe", "", "操作者确认的ShiYeLine.exe Windows绝对路径")
-	configPath := flags.String("config", "", "私有单群授权JSON配置路径；不在命令行填写群ID")
-	attemptID := flags.String("attempt-id", "", "已明确授权的独立请求标识；不自动生成，不得用于重发旧任务")
-	send := flags.Bool("send", false, "请求单次实验；仍要求单群配置、请求标识和完整确认")
+	configPath := flags.String("config", "", "私有目标JSON配置路径；不在命令行填写群ID")
+	send := flags.Bool("send", false, "请求单次实验；仍要求单群配置和完整确认，不自动重试")
 	if err := flags.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return nil
@@ -72,10 +71,7 @@ func runWith(args []string, execute func(string, ipc.Config, string, bool, io.Re
 		}
 	}
 	if *send && config.AuthorizedGroupID == "" {
-		return fmt.Errorf("实际发送必须通过-config显式加载唯一授权群；未发送")
+		return fmt.Errorf("实验发送必须通过-config显式加载群目标；未发送")
 	}
-	if *send && *attemptID == "" {
-		return fmt.Errorf("实际发送必须提供明确授权的-attempt-id，不自动生成新任务")
-	}
-	return execute(*exe, config, *attemptID, *send, os.Stdin, os.Stdout)
+	return execute(*exe, config, *send, os.Stdin, os.Stdout)
 }

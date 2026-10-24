@@ -177,7 +177,7 @@ func receiverFixture(t *testing.T, delay bool) (windowprobe.Target, *json.Decode
 	return target, decoder, cleanup
 }
 
-// TestCrossProcessSend 验证群/用户选择器的真实跨进程复制、固定业务标记、有效发送方HWND及LRESULT分离。
+// TestCrossProcessSend 验证两个选择器的固定及多行中文可变载荷跨进程复制，不调用真实客户端。
 func TestCrossProcessSend(t *testing.T) {
 	if runtime.GOARCH != "386" {
 		t.Skip("本次实验只允许 386 发送，amd64 只测 ABI 和只读身份")
@@ -185,29 +185,84 @@ func TestCrossProcessSend(t *testing.T) {
 	target, decoder, cleanup := receiverFixture(t, false)
 	defer cleanup()
 	for _, selector := range []string{"group_id", "user_id"} {
+		for _, input := range []string{Message, strings.Repeat("中", 500) + `\n第二行 😀 <>&`} {
+			t.Run(fmt.Sprintf("%s/%d", selector, len(input)), func(t *testing.T) {
+				message, err := prepareMessage(input)
+				if err != nil {
+					t.Fatal(err)
+				}
+				payload, err := buildPayload(selector, testGroupID, message)
+				if err != nil {
+					t.Fatal(err)
+				}
+				r, err := sendOnce(target, payload)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !r.Completed || !r.LResultValid || r.LResult != 1 || r.Timeout != "no" {
+					t.Fatalf("调用结果错误: %+v", r)
+				}
+				var observed struct {
+					Data    uint64
+					Payload []byte
+					Sender  bool
+				}
+				if err := decoder.Decode(&observed); err != nil {
+					t.Fatal(err)
+				}
+				if observed.Data != businessData || !observed.Sender || !bytes.Equal(observed.Payload, payload) {
+					t.Fatal("跨进程接收字节或发送方 HWND 不符")
+				}
+			})
+		}
+	}
+}
+
+// TestCrossProcessMaximumPayload 验证预算边界的783310字节载荷能完整传到独立fixture，不触及真实客户端。
+func TestCrossProcessMaximumPayload(t *testing.T) {
+	if runtime.GOARCH != "386" {
+		t.Skip("仅在386验证实际跨进程传送")
+	}
+	message, err := prepareMessage(strings.Repeat("中", escapedJSONBudget-947))
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, decoder, cleanup := receiverFixture(t, false)
+	defer cleanup()
+	for _, selector := range []string{"group_id", "user_id"} {
 		t.Run(selector, func(t *testing.T) {
-			payload, err := buildPayload(selector, "synthetic-target_1")
-			if err != nil {
-				t.Fatal(err)
+			payload, err := buildPayload(selector, testGroupID, message)
+			if err != nil || len(payload) != 783310 {
+				t.Fatalf("最大载荷长度错误: len=%d err=%v", len(payload), err)
 			}
-			r, err := sendOnce(target, payload)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !r.Completed || !r.LResultValid || r.LResult != 1 || r.Timeout != "no" {
-				t.Fatalf("调用结果错误: %+v", r)
-			}
-			var observed struct {
+			type observed struct {
 				Data    uint64
 				Payload []byte
 				Sender  bool
 			}
-			if err := decoder.Decode(&observed); err != nil {
-				t.Fatal(err)
+			type received struct {
+				packet observed
+				err    error
 			}
-			if observed.Data != businessData || !observed.Sender || !bytes.Equal(observed.Payload, payload) {
-				t.Fatal("跨进程接收字节或发送方 HWND 不符")
+			result := make(chan received, 1)
+			// 大载荷超过stdout管道容量；并发读取避免fixture自身阻塞同步WM_COPYDATA处理。
+			go func() {
+				var packet observed
+				err := decoder.Decode(&packet)
+				result <- received{packet: packet, err: err}
+			}()
+			call, err := sendOnce(target, payload)
+			if err != nil || !call.Completed || !call.LResultValid || call.LResult != 1 || call.Timeout != "no" {
+				t.Fatalf("最大载荷调用失败: call=%+v err=%v", call, err)
 			}
+			packet := <-result
+			if packet.err != nil {
+				t.Fatalf("最大载荷解码失败: %v", packet.err)
+			}
+			if packet.packet.Data != businessData || !packet.packet.Sender || !bytes.Equal(packet.packet.Payload, payload) {
+				t.Fatal("最大载荷传送的字节、业务标记或发送方窗口不符")
+			}
+			t.Logf("fixture完整接收%d字节，不代表内网通已发送或接收", len(payload))
 		})
 	}
 }
@@ -219,7 +274,7 @@ func TestCrossProcessTimeout(t *testing.T) {
 	}
 	target, decoder, cleanup := receiverFixture(t, true)
 	defer cleanup()
-	payload, err := buildPayload("group_id", "synthetic-group_1")
+	payload, err := buildPayload("group_id", testGroupID, Message)
 	if err != nil {
 		t.Fatal(err)
 	}

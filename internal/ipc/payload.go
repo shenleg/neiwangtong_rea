@@ -1,21 +1,20 @@
-// 本文件构造阶段八单次实验缓冲区；其长度和空隙初始化不是厂商协议定义。
+// 本文件按已确认的三个字符串偏移构造可变正文载荷；最小传送长度和空隙初始化不是厂商结构定义。
 package ipc
 
 import "fmt"
 
 const (
-	// Message 是群与用户发送共用的固定实验正文，不接受任意文本。
+	// Message 保留历史固定实验正文，供CLI与兼容性测试使用；Adapter也接受合法自定义正文。
 	Message = "NWT-GW-AUTH-TEST-0001"
 	// SampleSHA256 是已静态分析的客户端文件摘要，运行前必须完全匹配。
 	SampleSHA256   = "e7caef3fe744f9fe6ba90dd1d53b7e64241cb54020a8bf37be5e756e2fe881b1"
 	selectorOffset = 0
 	targetOffset   = 0x64
 	bodyOffset     = 0x12c
-	// 仅覆盖已知的三个源字符串，包含正文 NUL；不是恢复的生产者总长。
-	payloadSize = bodyOffset + len(Message) + 1
 )
 
-func buildPayload(selector, targetID string) ([]byte, error) {
+// message须由prepareMessage校验；其容量预算已限制字节数，长度加法及DWORD转换不会溢出。
+func buildPayload(selector, targetID, message string) ([]byte, error) {
 	if targetID == "" || len(targetID)+1 > bodyOffset-targetOffset {
 		return nil, fmt.Errorf("实验目标 ID 必须非空，且含 NUL 后不覆盖正文起点")
 	}
@@ -31,9 +30,10 @@ func buildPayload(selector, targetID string) ([]byte, error) {
 			}
 		}
 	}
-	b := make([]byte, payloadSize)
+	// 只传已知读取范围并包含正文NUL，不猜测厂商尾部字段。
+	b := make([]byte, bodyOffset+len(message)+1)
 	copy(b[selectorOffset:], selector)
 	copy(b[targetOffset:], targetID)
-	copy(b[bodyOffset:], Message)
+	copy(b[bodyOffset:], message)
 	return b, nil
 }

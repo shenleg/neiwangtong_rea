@@ -47,18 +47,19 @@ func errorText(err error) string {
 }
 
 type storedEvent struct {
-	Event     string      `json:"event"`
-	AttemptID string      `json:"attempt_id"`
-	GroupID   string      `json:"group_id"`
-	UserID    string      `json:"user_id"`
-	Text      string      `json:"text"`
-	Result    *CallResult `json:"result"`
+	Event     string          `json:"event"`
+	AttemptID string          `json:"attempt_id"`
+	GroupID   string          `json:"group_id"`
+	UserID    string          `json:"user_id"`
+	Text      json.RawMessage `json:"text"`
+	Result    *CallResult     `json:"result"`
 }
 
 // RecordObservation 为attemptID的既有实际调用追加调用者提供的观察，返回本条观察的投递判定。
 // 只接受ClientObservation、SenderObservation、RecipientObservation及各自固定状态；不读取UI或发送消息。
-// 无实际调用、配置目标不符、日志无效、状态无效或写入失败时返回错误；客户端异常/unknown、
-// 多条或错误目标会先保存观察再返回错误。RecipientObserved只来自独立接收方的one，不推断全群送达。
+// 使用SendResult.AttemptID定位记录，不依赖目标配置；无实际调用、日志标识/目标/正文无效、状态无效或写入失败时返回错误。
+// 客户端异常/unknown、多条或错误目标会先保存观察再返回错误。
+// RecipientObserved只来自独立接收方的one，不推断全群送达。
 func (a *Adapter) RecordObservation(attemptID string, observation Observation) (delivery Delivery, err error) {
 	delivery = Unknown
 	if err := validateAttemptID(attemptID); err != nil {
@@ -115,11 +116,16 @@ func (a *Adapter) RecordObservation(attemptID string, observation Observation) (
 	if reservations != 1 || calls != 1 || !call.Invoked {
 		return delivery, fmt.Errorf("没有可追加观察的唯一实际调用")
 	}
-	// 目标种类和原始ID都必须匹配；只含group_id的历史记录继续按群任务校验。
-	groupMatches := reserved.GroupID != "" && reserved.UserID == "" && reserved.GroupID == a.groupID
-	userMatches := reserved.UserID != "" && reserved.GroupID == "" && reserved.UserID == a.userID
-	if reserved.AttemptID != attemptID || reserved.Text != Message || !(groupMatches || userMatches) {
-		return delivery, fmt.Errorf("尝试记录与绑定的授权任务不符")
+	// 目标来自持久化记录而非Adapter配置；历史群/用户日志仍须恰好包含一种合法目标。
+	validGroup := reserved.UserID == "" && groupIDPattern.MatchString(reserved.GroupID)
+	validUser := reserved.GroupID == "" && validUserID(reserved.UserID)
+	text, err := decodeJSONString(reserved.Text)
+	if err != nil {
+		return delivery, fmt.Errorf("尝试记录的正文无效: %w", err)
+	}
+	message, messageErr := prepareMessage(text)
+	if reserved.AttemptID != attemptID || messageErr != nil || message != text || !(validGroup || validUser) {
+		return delivery, fmt.Errorf("尝试记录的标识、目标或正文无效")
 	}
 	if observation.Kind == RecipientObservation && observation.State == "one" {
 		delivery = RecipientObserved

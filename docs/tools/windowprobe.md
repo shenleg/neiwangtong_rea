@@ -262,4 +262,4 @@ Windows amd64、386 均已通过 `go test -count=1 -timeout 45s ./...`、`go vet
 | `internal/windowprobe/stability_test.go` | 合成状态、比较、定位和取消回归测试 |
 | `internal/windowprobe/scan_other.go` | 非 Windows 环境明确报错，仍可运行纯分类测试 |
 
-本工具不改变 [IPC 契约](../research/ipc/ipc-contract.md) 中“协议尚未完整恢复、不可实现发送器”的结论。
+本工具只负责只读窗口定位，不证明 IPC 送达。后续固定正文的群与单聊发送已获独立接收确认，当前 Adapter 每次调用仍复用 `Resolve` 复核客户端；完整厂商协议和任意正文范围仍未知，见 [IPC 契约](../research/ipc/ipc-contract.md)。
