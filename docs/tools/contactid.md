@@ -2,6 +2,8 @@
 
 `tools/contactid.py` 从已确认实例的完整离线 `nr` 副本提取联系人原始名称与 ID。它不查询群成员表、不读取聊天或凭据、不连接客户端进程、不发送消息、不创建 AttemptID，也不修改发送配置。
 
+日常查询推荐改用 Go 实现（`internal/contacts` 包与 `cmd/contactlookup` 命令，见[操作指引](contactid-runbook.md)）：同一 codec 与解析契约的纯标准库版本，无需构建 codec DLL；本文的 Python 工具保留用于审计级严格 schema 检查。
+
 映射依据见[联系人研究](../research/reports/user-id/user-id-report.md)：`OrgStruct_<当前身份>` 中 `Type=1` 的 `Id` 是 IPC 用户身份键，`Data` 中的 XML `U/Name` 是原始名称。固定 codec 和页头依据见[nr-codec 报告](../research/reports/nr-codec/nr-codec-report.md)。
 
 ## 1. 构建可信读取库
