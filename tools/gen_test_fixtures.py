@@ -48,6 +48,30 @@ EXPECTED_GROUPS = {
     ],
 }
 
+# agent 统一入口的专用夹具：单身份表（真实实例实测均为单表），覆盖唯一/同名/未命中。
+AGENT_ROWS_NR = [
+    (None, None, 1, "agent-alice-01", "<U><Name>Alice</Name></U>"),
+    (None, None, 1, "agent-bob-02", "<U><Name>Bob</Name></U>"),
+    (None, None, 1, "agent-carol-03", "<U><Name>Carol</Name></U>"),
+    (None, None, 1, "agent-carol-04", "<U><Name>Carol</Name></U>"),
+]
+AGENT_ROWS_QRP = [
+    ("agent-group-01", "研发群", "agent-alice-01", "x"),
+    ("agent-group-02", "值班群", "agent-bob-02", "y"),
+    ("agent-group-03", "值班群", "agent-carol-03", "z"),
+]
+EXPECTED_AGENT_CONTACTS = [
+    ["Alice", "agent-alice-01"],
+    ["Bob", "agent-bob-02"],
+    ["Carol", "agent-carol-03"],
+    ["Carol", "agent-carol-04"],
+]
+EXPECTED_AGENT_GROUPS = [
+    ["研发群", "agent-group-01"],
+    ["值班群", "agent-group-02"],
+    ["值班群", "agent-group-03"],
+]
+
 # 三张身份表：A 覆盖正常/同名/溢出/空名/类型过滤/实体还原，B 是损坏行，C 是最小正常表。
 DDL = (
     "CREATE TABLE {table} ("
@@ -216,6 +240,49 @@ def main():
         json.dumps(qrp_manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"qrp UTF-8 SHA-256: {qrp_manifest['sha256']}")
     print(f"qrp UTF-16 SHA-256: {qrp_manifest['utf16_sha256']}")
+
+    # 三、agent 统一入口夹具：单身份表的 nr（加密）与 qrp（明文），均为 UTF-16le。
+    agent_dir = REPO_ROOT / "internal" / "agent" / "testdata"
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as temp:
+        nr_path = pathlib.Path(temp) / "agent-nr.db"
+        connection = sqlite3.connect(nr_path)
+        connection.execute(f"PRAGMA page_size={PAGE_SIZE}")
+        connection.execute("PRAGMA encoding='UTF-16le'")
+        connection.execute(DDL.format(table="OrgStruct_AGENT"))
+        connection.executemany(
+            "INSERT INTO OrgStruct_AGENT (UpdateTime, OnlineTime, Type, Id, Data) VALUES (?, ?, ?, ?, ?)",
+            AGENT_ROWS_NR,
+        )
+        connection.commit()
+        connection.close()
+        nr_plaintext = nr_path.read_bytes()
+        nr_ciphertext, _ = encrypt_database(verify, nr_plaintext)
+        (agent_dir / "nr-agent.db").write_bytes(nr_ciphertext)
+
+        qrp_path = pathlib.Path(temp) / "agent-qrp.db"
+        connection = sqlite3.connect(qrp_path)
+        connection.execute(f"PRAGMA page_size={PAGE_SIZE}")
+        connection.execute("PRAGMA encoding='UTF-16le'")
+        connection.execute(QGROUP_DDL.format(table="QGroupInfo_AGENT"))
+        connection.executemany(
+            "INSERT INTO QGroupInfo_AGENT (QGroupId, Name, Master, Intr) VALUES (?, ?, ?, ?)",
+            AGENT_ROWS_QRP,
+        )
+        connection.commit()
+        connection.close()
+        (agent_dir / "qrp-agent.db").write_bytes(qrp_path.read_bytes())
+    agent_manifest = {
+        "password": FIXTURE_PASSWORD.decode("ascii"),
+        "nr_sha256": hashlib.sha256(nr_ciphertext).hexdigest(),
+        "qrp_sha256": hashlib.sha256((agent_dir / "qrp-agent.db").read_bytes()).hexdigest(),
+        "expected_contacts": EXPECTED_AGENT_CONTACTS,
+        "expected_groups": EXPECTED_AGENT_GROUPS,
+    }
+    (agent_dir / "agent-manifest.json").write_text(
+        json.dumps(agent_manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"agent nr SHA-256: {agent_manifest['nr_sha256']}")
+    print(f"agent qrp SHA-256: {agent_manifest['qrp_sha256']}")
 
 
 if __name__ == "__main__":
