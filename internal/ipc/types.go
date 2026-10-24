@@ -38,8 +38,9 @@ const (
 	RecipientObserved Delivery = "recipient_observed"
 )
 
-// SendResult 即使发送失败也保留已发生事实；AttemptReserved表示本次调用已占用日志。
-// SendGroup和SendUser的Delivery始终为Unknown，接收证据通过RecordObservation单独保存。
+// SendResult 即使发送失败也保留已发生事实；AttemptID是内部生成的记录标识，AttemptReserved表示已占用日志。
+// SendGroup和SendUser的Delivery始终为Unknown；调用者可用AttemptID向RecordObservation提供独立接收证据。
+// AttemptID仅用于关联记录，不用于调用方重复请求去重；再次调用发送方法会创建新请求。
 type SendResult struct {
 	AttemptID       string     `json:"attempt_id"`
 	AttemptReserved bool       `json:"attempt_reserved"`

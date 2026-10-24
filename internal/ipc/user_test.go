@@ -1,4 +1,4 @@
-// 本文件验证配置限定的原生user_id入口、群/用户隔离及共用单次控制，仅使用合成目标与模拟发送。
+// 本文件验证显式原始user_id、配置读取兼容、群/用户单次控制及观察日志，仅使用合成目标与模拟发送。
 package ipc
 
 import (
@@ -18,7 +18,7 @@ import (
 
 const testUserID = "synthetic-user_1"
 
-// TestUserConfig 验证单用户、双目标类型和原单群配置均原样读取，字段顺序不影响绑定。
+// TestUserConfig 验证实验命令仍可原样读取单用户、双目标类型和原单群配置，字段顺序不影响结果。
 func TestUserConfig(t *testing.T) {
 	for name, config := range map[string]Config{
 		"user":     {AuthorizedUserID: testUserID},
@@ -73,17 +73,6 @@ func TestUserConfigRejectsInvalidTargets(t *testing.T) {
 			t.Fatal(err)
 		}
 		invalid = append(invalid, string(data))
-		d, _, _ := fixture(t)
-		d.check = func(string, *windowprobe.Target) (windowprobe.Target, Preflight, error) {
-			t.Fatal("无效用户配置仍查询窗口")
-			return windowprobe.Target{}, Preflight{}, nil
-		}
-		// 空Config是已定义的只读模式；显式空JSON字段仍由LoadConfig拒绝。
-		if id != "" {
-			if _, err := newAdapter("synthetic.exe", Config{AuthorizedUserID: id}, d); err == nil {
-				t.Fatal("构造接受无效用户配置")
-			}
-		}
 	}
 	for _, content := range invalid {
 		path := filepath.Join(t.TempDir(), "config.json")
@@ -99,20 +88,20 @@ func TestUserConfigRejectsInvalidTargets(t *testing.T) {
 
 // TestUserIDPreserved 验证联系人原始ID不被格式假设、空白处理或Unicode损坏改变。
 func TestUserIDPreserved(t *testing.T) {
-	for _, id := range []string{" 原样 ID-🙂 ,;| ", strings.Repeat("界", 66) + "A", `literal\ud800`, "replacement-�"} {
+	for _, id := range []string{"a", " ", "other", strings.ToUpper(testUserID), " 原样 ID-🙂 ,;| ", strings.Repeat("A", 199), strings.Repeat("界", 66) + "A", `literal\ud800`, "replacement-�"} {
 		d, _, _ := fixture(t)
-		a := adapterFixture(t, Config{AuthorizedUserID: id}, d)
+		a := adapterFixture(t, d)
 		a.d.send = func(_ windowprobe.Target, payload []byte) (CallResult, error) {
 			if string(payload[targetOffset:targetOffset+len(id)]) != id || payload[targetOffset+len(id)] != 0 {
 				t.Fatal("原始ID被改写或NUL不在传送区内")
 			}
 			return classifyCall(1, 1, 0, time.Millisecond), nil
 		}
-		if _, err := a.SendUser(id, testAttemptID); err != nil {
+		if _, err := a.SendUser(id, Message); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := buildPayload("user_id", "bad\xff"); err == nil {
+	if _, err := buildPayload("user_id", "bad\xff", Message); err == nil {
 		t.Fatal("非法UTF-8被接受")
 	}
 	path := filepath.Join(t.TempDir(), "config.json")
@@ -126,12 +115,10 @@ func TestUserIDPreserved(t *testing.T) {
 	}
 }
 
-// TestSendUserPayloadAndObservation 验证配置快照、user_id偏移与NUL、调用前落盘以及独立接收观察。
+// TestSendUserPayloadAndObservation 验证显式user_id偏移与NUL、调用前落盘以及独立接收观察。
 func TestSendUserPayloadAndObservation(t *testing.T) {
 	d, path, calls := fixture(t)
-	config := Config{AuthorizedGroupID: testGroupID, AuthorizedUserID: testUserID}
-	a := adapterFixture(t, config, d)
-	config.AuthorizedUserID = "other"
+	a := adapterFixture(t, d)
 	originalSend := a.d.send
 	a.d.send = func(target windowprobe.Target, payload []byte) (CallResult, error) {
 		if len(payload) != 322 {
@@ -148,7 +135,7 @@ func TestSendUserPayloadAndObservation(t *testing.T) {
 		}
 		return originalSend(target, payload)
 	}
-	result, err := a.SendUser(testUserID, testAttemptID)
+	result, err := a.SendUser(testUserID, Message)
 	if err != nil || !result.AttemptReserved || !result.Call.Completed || result.Delivery != Unknown || *calls != 1 {
 		t.Fatalf("单聊调用事实错误: %+v %v", result, err)
 	}
@@ -162,26 +149,22 @@ func TestSendUserPayloadAndObservation(t *testing.T) {
 			t.Fatalf("单聊观察结果错误: %s %v", delivery, err)
 		}
 	}
-	if _, err := a.SendUser(testUserID, testAttemptID); !errors.Is(err, os.ErrExist) || *calls != 1 {
+	if _, err := a.SendUser(testUserID, Message); !errors.Is(err, os.ErrExist) || *calls != 1 {
 		t.Fatal("已占用单聊被重发")
 	}
 }
 
-// TestMissingTargetDoesNotSwitchKind 验证缺少对应授权时不改用另一种目标，也不创建记录。
+// TestMissingTargetDoesNotSwitchKind 验证空目标不改用另一种目标类型，也不创建记录。
 func TestMissingTargetDoesNotSwitchKind(t *testing.T) {
-	for _, config := range []Config{{}, {AuthorizedGroupID: testGroupID}, {AuthorizedUserID: testUserID}} {
-		d, path, calls := fixture(t)
-		a := adapterFixture(t, config, d)
-		send := func(attemptID string) (SendResult, error) { return a.SendUser(testUserID, attemptID) }
-		if config.AuthorizedUserID != "" {
-			send = a.SendGroup
-		}
-		result, err := send(testAttemptID)
+	d, path, calls := fixture(t)
+	a := adapterFixture(t, d)
+	for _, send := range []func(string, string) (SendResult, error){a.SendGroup, a.SendUser} {
+		result, err := send("", Message)
 		if err == nil || result.AttemptReserved || result.Call.Invoked || *calls != 0 {
-			t.Fatal("缺少授权仍发送或切换目标类型")
+			t.Fatal("空目标仍发送或切换目标类型")
 		}
 		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-			t.Fatal("缺少授权仍占用记录")
+			t.Fatal("空目标仍占用记录")
 		}
 	}
 }
@@ -194,15 +177,16 @@ func TestGroupAndUserShareAttemptReservation(t *testing.T) {
 		calls.Add(1)
 		return classifyCall(1, 1, 0, time.Millisecond), nil
 	}
-	config := Config{AuthorizedGroupID: testGroupID, AuthorizedUserID: testUserID}
-	group, user := adapterFixture(t, config, d), adapterFixture(t, config, d)
+	group, user := adapterFixture(t, d), adapterFixture(t, d)
 	var wg sync.WaitGroup
-	sendUser := func(attemptID string) (SendResult, error) { return user.SendUser(testUserID, attemptID) }
-	for _, send := range []func(string) (SendResult, error){group.SendGroup, sendUser} {
+	for _, send := range []func() (SendResult, error){
+		func() (SendResult, error) { return group.SendGroup(testGroupID, Message) },
+		func() (SendResult, error) { return user.SendUser(testUserID, Message) },
+	} {
 		wg.Add(1)
-		go func(send func(string) (SendResult, error)) {
+		go func(send func() (SendResult, error)) {
 			defer wg.Done()
-			_, _ = send(testAttemptID)
+			_, _ = send()
 		}(send)
 	}
 	wg.Wait()
@@ -211,7 +195,7 @@ func TestGroupAndUserShareAttemptReservation(t *testing.T) {
 	}
 }
 
-// TestUserObservationChecksTargetKind 验证同字符串但不同目标类型、不同用户以及含双目标的损坏记录均拒绝观察。
+// TestUserObservationChecksTargetKind 验证同一合法ID可分别作为群或用户观察，双目标及无目标记录拒绝追加。
 func TestUserObservationChecksTargetKind(t *testing.T) {
 	for _, selector := range []string{"group_id", "user_id", "both", "neither"} {
 		t.Run(selector, func(t *testing.T) {
@@ -231,29 +215,26 @@ func TestUserObservationChecksTargetKind(t *testing.T) {
 			if err := os.WriteFile(path, data, 0600); err != nil {
 				t.Fatal(err)
 			}
-			config := Config{AuthorizedUserID: testGroupID}
-			if selector == "user_id" {
-				config = Config{AuthorizedGroupID: testGroupID, AuthorizedUserID: testUserID}
-			}
-			a := adapterFixture(t, config, d)
-			if delivery, err := a.RecordObservation(testAttemptID, Observation{RecipientObservation, "one"}); err == nil || delivery != Unknown {
-				t.Fatal("错误目标类型或ID被记录为送达")
+			a := adapterFixture(t, d)
+			delivery, err := a.RecordObservation(testAttemptID, Observation{RecipientObservation, "one"})
+			valid := selector == "group_id" || selector == "user_id"
+			if valid && (err != nil || delivery != RecipientObserved) || !valid && (err == nil || delivery != Unknown) {
+				t.Fatalf("目标类型校验错误: delivery=%s err=%v", delivery, err)
 			}
 			after, err := os.ReadFile(path)
-			if err != nil || !bytes.Equal(data, after) {
-				t.Fatal("错误目标记录被修改")
+			if err != nil || valid && (!bytes.HasPrefix(after, data) || bytes.Equal(data, after)) || !valid && !bytes.Equal(data, after) {
+				t.Fatal("观察未追加或错误目标记录被修改")
 			}
 		})
 	}
 }
 
-// TestUserPreCallGuards 验证单聊的请求、平台、预检、落盘与最终身份失败均阻止实际调用。
+// TestUserPreCallGuards 验证单聊的标识生成、平台、预检、落盘与最终身份失败均阻止实际调用。
 func TestUserPreCallGuards(t *testing.T) {
 	for _, stage := range []string{"attempt-id", "platform", "preflight", "journal", "final-identity"} {
 		t.Run(stage, func(t *testing.T) {
 			d, path, calls := fixture(t)
 			stop := errors.New("synthetic pre-call failure")
-			attemptID := testAttemptID
 			checks := 0
 			d.check = func(string, *windowprobe.Target) (windowprobe.Target, Preflight, error) {
 				checks++
@@ -264,14 +245,14 @@ func TestUserPreCallGuards(t *testing.T) {
 			}
 			switch stage {
 			case "attempt-id":
-				attemptID = "../invalid"
+				d.newAttemptID = func() (string, error) { return "", stop }
 			case "platform":
 				d.allowSend = func() error { return stop }
 			case "journal":
 				d.journalPath = func(string) (string, error) { return "", stop }
 			}
-			a := adapterFixture(t, Config{AuthorizedUserID: testUserID}, d)
-			result, err := a.SendUser(testUserID, attemptID)
+			a := adapterFixture(t, d)
+			result, err := a.SendUser(testUserID, Message)
 			if err == nil || result.Call.Invoked || *calls != 0 || result.Delivery != Unknown || result.AttemptReserved != (stage == "final-identity") {
 				t.Fatalf("单聊调用前失败处理错误: %+v %v", result, err)
 			}
@@ -280,7 +261,7 @@ func TestUserPreCallGuards(t *testing.T) {
 				if err != nil || !bytes.Contains(data, []byte("stopped_before_call")) {
 					t.Fatal("最终身份失败未保留占用记录")
 				}
-				if _, err := a.SendUser(testUserID, testAttemptID); !errors.Is(err, os.ErrExist) || *calls != 0 {
+				if _, err := a.SendUser(testUserID, Message); !errors.Is(err, os.ErrExist) || *calls != 0 {
 					t.Fatal("最终身份失败恢复了单聊发送资格")
 				}
 			} else if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
@@ -290,24 +271,25 @@ func TestUserPreCallGuards(t *testing.T) {
 	}
 }
 
-// TestSendUserRejectsUnconfiguredID 验证运行时目标必须原样匹配授权配置，拒绝时不预检、不占用日志或调用发送。
-func TestSendUserRejectsUnconfiguredID(t *testing.T) {
-	for _, id := range []string{"", "other", strings.ToUpper(testUserID), " " + testUserID, testUserID + " ", testUserID + ",other", "bad\x00id", "bad\xff", strings.Repeat("a", 200)} {
+// TestSendUserRejectsInvalidID 验证空值、NUL、非法UTF-8及超过199字节的用户ID不生成标识、不预检或占用日志。
+func TestSendUserRejectsInvalidID(t *testing.T) {
+	for _, id := range []string{"", "bad\x00id", "bad\xff", strings.Repeat("a", 200), strings.Repeat("界", 67)} {
 		d, path, calls := fixture(t)
-		a := adapterFixture(t, Config{AuthorizedUserID: testUserID}, d)
+		a := adapterFixture(t, d)
 		a.d.check = func(string, *windowprobe.Target) (windowprobe.Target, Preflight, error) {
-			t.Fatal("不匹配的用户ID仍执行预检")
+			t.Fatal("非法用户ID仍执行预检")
 			return windowprobe.Target{}, Preflight{}, nil
 		}
-		result, err := a.SendUser(id, testAttemptID)
-		if err == nil || result.AttemptID != testAttemptID || result.AttemptReserved || result.Call.Invoked || result.Delivery != Unknown || *calls != 0 {
-			t.Fatalf("未授权目标仍产生副作用: %+v %v", result, err)
+		a.d.newAttemptID = func() (string, error) { t.Fatal("非法用户ID仍生成标识"); return "", nil }
+		result, err := a.SendUser(id, Message)
+		if err == nil || result.AttemptID != "" || result.AttemptReserved || result.Call.Invoked || result.Delivery != Unknown || *calls != 0 {
+			t.Fatalf("非法目标仍产生副作用: %+v %v", result, err)
 		}
 		if strings.Contains(err.Error(), testUserID) {
-			t.Fatal("错误信息泄露授权ID")
+			t.Fatal("错误信息泄露用户ID")
 		}
 		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-			t.Fatal("未授权目标仍占用记录")
+			t.Fatal("非法目标仍占用记录")
 		}
 	}
 }
@@ -319,13 +301,12 @@ func TestUserTimeoutRemainsReserved(t *testing.T) {
 		*calls++
 		return classifyCall(0, 0, 1460, 5*time.Second), nil
 	}
-	config := Config{AuthorizedUserID: testUserID}
-	a := adapterFixture(t, config, d)
-	result, err := a.SendUser(testUserID, testAttemptID)
+	a := adapterFixture(t, d)
+	result, err := a.SendUser(testUserID, Message)
 	if err == nil || !result.AttemptReserved || !result.Call.Invoked || result.Call.Timeout != "yes" || result.Delivery != Unknown {
 		t.Fatalf("单聊超时结果错误: %+v %v", result, err)
 	}
-	if _, err := adapterFixture(t, config, d).SendUser(testUserID, testAttemptID); !errors.Is(err, os.ErrExist) || *calls != 1 {
+	if _, err := adapterFixture(t, d).SendUser(testUserID, Message); !errors.Is(err, os.ErrExist) || *calls != 1 {
 		t.Fatal("单聊超时后重发")
 	}
 }

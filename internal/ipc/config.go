@@ -1,4 +1,4 @@
-// 本文件只读加载授权群和用户配置，严格校验结构和ID，错误信息不包含配置内容。
+// 本文件供实验命令只读加载目标配置，严格校验结构和ID；Adapter不依赖配置或将其作为目标权限限制。
 package ipc
 
 import (
@@ -19,15 +19,15 @@ func validUserID(id string) bool {
 	return id != "" && utf8.ValidString(id) && !strings.ContainsRune(id, 0) && len(id) < bodyOffset-targetOffset
 }
 
-// Config 显式绑定唯一授权原生群和/或唯一授权用户；不包含正文、名称、列表或备用目标。
-// 空配置仅允许只读预检；每种发送方法只使用对应的授权ID。
+// Config 保存实验命令读取的群和/或用户目标，不包含正文、名称、列表或备用目标。
+// 字段及JSON键沿用旧命名；不是Adapter的授权名单，发送目标由SendGroup或SendUser参数指定。
 type Config struct {
 	AuthorizedGroupID string `json:"authorized_group_id,omitempty"`
 	AuthorizedUserID  string `json:"authorized_user_id,omitempty"`
 }
 
-// LoadConfig 只读解析path指定的授权配置并保留ID原值；不定位客户端或发送。
-// 对象至少包含一个授权ID；文件、重复键、未知字段、类型、ID格式或尾随内容错误时返回零值和错误，不回显配置值。
+// LoadConfig 只读解析path指定的实验目标配置并保留ID原值，返回Config；不定位客户端、检查发送权限或发送。
+// 对象至少包含一个目标ID；文件、重复键、未知字段、类型、ID格式或尾随内容错误时返回零值和错误，不回显配置值。
 func LoadConfig(path string) (Config, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -83,13 +83,18 @@ func LoadConfig(path string) (Config, error) {
 	return config, nil
 }
 
-// encoding/json会把非法UTF-8或孤立UTF-16代理项替换为U+FFFD；身份键不能在解析时被静默改写。
 func decodeConfigID(decoder *json.Decoder) (string, error) {
 	var raw json.RawMessage
 	if err := decoder.Decode(&raw); err != nil {
 		return "", err
 	}
-	invalid := fmt.Errorf("授权ID必须是未损坏的JSON文本字符串")
+	return decodeJSONString(raw)
+}
+
+// encoding/json会静默替换非法UTF-8或孤立代理项；配置ID及日志正文必须保留原始字符。
+// raw由JSON解码器提供，语法已验证；这里只检查字符串类型和Unicode完整性。
+func decodeJSONString(raw json.RawMessage) (string, error) {
+	invalid := fmt.Errorf("必须是未损坏的JSON文本字符串")
 	if len(raw) < 2 || raw[0] != '"' || !utf8.Valid(raw) {
 		return "", invalid
 	}

@@ -1,7 +1,9 @@
-// 本文件将窗口身份、固定载荷、持久化单次控制和Win32调用封装为非交互式Adapter。
+// 本文件将客户端绑定、显式目标与自定义正文发送、持久化调用记录封装为非交互式Adapter。
 package ipc
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -13,46 +15,45 @@ import (
 	"neiwangtong-gateway/internal/windowprobe"
 )
 
-// 固定命名前缀排除Windows设备名与路径穿越；128字符上限仅限制日志文件名，不是IPC字段容量。
+// 保留历史标识格式以读取旧日志；固定前缀排除Windows设备名与路径穿越，长度只限制文件名。
 var attemptIDPattern = regexp.MustCompile(`^NWT-GW-[A-Za-z0-9][A-Za-z0-9_-]{0,120}$`)
 
 type dependencies struct {
-	check       func(string, *windowprobe.Target) (windowprobe.Target, Preflight, error)
-	send        func(windowprobe.Target, []byte) (CallResult, error)
-	journalPath func(string) (string, error)
-	allowSend   func() error
+	check        func(string, *windowprobe.Target) (windowprobe.Target, Preflight, error)
+	send         func(windowprobe.Target, []byte) (CallResult, error)
+	journalPath  func(string) (string, error)
+	allowSend    func() error
+	newAttemptID func() (string, error)
 }
 
-// Adapter 绑定一个正常授权客户端实例及配置中的唯一原生群和/或唯一用户。
+// Adapter 绑定一个正常登录的本机客户端实例，接收目标由每次发送调用显式指定，不检查目标授权名单。
 // 方法可并发调用，同一Adapter内串行执行；零值不可用，必须通过NewAdapter创建。
-// 模块没有输入流、控制台确认、重试或自动任务ID；调用SendGroup或SendUser代表上层已完成单次授权。
+// 每次发送内部生成独立记录标识，不读取控制台、不自动重试；再次调用就是新的发送请求。
 type Adapter struct {
 	mu      sync.Mutex
 	exePath string
-	groupID string
-	userID  string
 	target  windowprobe.Target
 	d       dependencies
 }
 
-// NewAdapter 校验配置并只读绑定exePath对应的唯一客户端，返回可复用Adapter，不创建尝试日志或发送。
-// config为空时仅允许Preflight；配置、路径、窗口、样本或安全上下文错误时返回错误。
-func NewAdapter(exePath string, config Config) (*Adapter, error) {
-	return newAdapter(exePath, config, dependencies{checkClient, sendOnce, journalPath, allowSend})
+// NewAdapter 只读校验并绑定exePath指定的唯一客户端，返回可复用Adapter，不创建发送记录或发送。
+// 路径、窗口、样本或安全上下文错误时返回错误；不配置或绑定接收目标。
+func NewAdapter(exePath string) (*Adapter, error) {
+	return newAdapter(exePath, dependencies{
+		check:        checkClient,
+		send:         sendOnce,
+		journalPath:  journalPath,
+		allowSend:    allowSend,
+		newAttemptID: newAttemptID,
+	})
 }
 
-func newAdapter(exePath string, config Config, d dependencies) (*Adapter, error) {
-	if config.AuthorizedGroupID != "" && !groupIDPattern.MatchString(config.AuthorizedGroupID) {
-		return nil, fmt.Errorf("授权群ID必须是32个十六进制字符")
-	}
-	if config.AuthorizedUserID != "" && !validUserID(config.AuthorizedUserID) {
-		return nil, fmt.Errorf("授权用户ID必须是1至199字节有效UTF-8且不含NUL")
-	}
+func newAdapter(exePath string, d dependencies) (*Adapter, error) {
 	target, _, err := d.check(exePath, nil)
 	if err != nil {
 		return nil, err
 	}
-	return &Adapter{exePath: exePath, groupID: config.AuthorizedGroupID, userID: config.AuthorizedUserID, target: target, d: d}, nil
+	return &Adapter{exePath: exePath, target: target, d: d}, nil
 }
 
 // Preflight 只读重新核对绑定的同一客户端与窗口，返回结构化身份信息；不输出、不创建日志或发送。
@@ -68,40 +69,44 @@ func (a *Adapter) Preflight() (Preflight, error) {
 	return info, nil
 }
 
-// SendGroup 向配置的唯一授权群发送一次固定Message，attemptID必须是上层明确授权的独立请求标识。
-// 调用前独占持久化该标识，已有记录永久拒绝重复调用；不自动生成新标识或重试。
-// 返回值始终保留已发生的调用事实且Delivery为Unknown；平台、身份、日志或Win32失败时同时返回错误。
-// 此方法不读取输入、显示提示或等待接收观察，正常返回也不表示消息送达。
-func (a *Adapter) SendGroup(attemptID string) (SendResult, error) {
-	return a.send(attemptID, "group_id", a.groupID)
+// SendGroup 使用已绑定客户端向groupID指定的原生群发送一次message，不检查调用方的目标权限。
+// groupID须为32个十六进制字符；message须为非空有效UTF-8且无NUL，按内容检查序列化容量。
+// 字面的\n和\r\n分别转为实际LF和CRLF，实际换行保留；不解释其他转义或自动拆分正文。
+// 内部生成记录标识并通过SendResult.AttemptID返回；每次调用是新请求，不自动重试。
+// 输入、平台、身份、日志或Win32失败时返回错误及已发生的调用事实；Delivery始终为Unknown，不代表送达。
+func (a *Adapter) SendGroup(groupID, message string) (SendResult, error) {
+	return a.send("group_id", groupID, message)
 }
 
-// SendUser 向userID指定的原始用户身份发送一次固定Message；userID必须与配置的唯一授权用户完全相同。
-// attemptID必须是上层明确授权的独立请求标识；与SendGroup共用单次日志，已有记录永久拒绝，不自动重试。
-// 返回值保留调用事实且Delivery始终为Unknown；目标不符、未绑定用户、平台、身份、日志或Win32失败时返回错误。
-// 此方法不按名称/IP查找、不解析列表，也不等待独立接收观察；正常返回不表示消息送达。
-func (a *Adapter) SendUser(userID, attemptID string) (SendResult, error) {
-	if userID != a.userID {
-		return SendResult{AttemptID: attemptID, Delivery: Unknown}, fmt.Errorf("用户ID与配置的唯一授权用户不符；未发送")
-	}
-	return a.send(attemptID, "user_id", userID)
+// SendUser 使用已绑定客户端向userID指定的原始用户发送一次message，不要求预配置用户或检查目标权限。
+// userID须为1至199字节有效UTF-8且不含NUL，不按名称/IP查找或改写ID；正文规则与SendGroup相同。
+// 内部生成记录标识并通过SendResult.AttemptID返回；每次调用是新请求，不自动重试。
+// 输入、平台、身份、日志或Win32失败时返回错误及已发生的调用事实；Delivery始终为Unknown，不代表送达。
+func (a *Adapter) SendUser(userID, message string) (SendResult, error) {
+	return a.send("user_id", userID, message)
 }
 
-func (a *Adapter) send(attemptID, selector, targetID string) (result SendResult, err error) {
-	result = SendResult{AttemptID: attemptID, Delivery: Unknown}
-	if err := validateAttemptID(attemptID); err != nil {
+func (a *Adapter) send(selector, targetID, message string) (result SendResult, err error) {
+	result.Delivery = Unknown
+	message, err = prepareMessage(message)
+	if err != nil {
 		return result, err
 	}
-	if targetID == "" {
-		return result, fmt.Errorf("尚未绑定唯一授权%s；未发送", selector)
+	if selector == "group_id" && !groupIDPattern.MatchString(targetID) {
+		return result, fmt.Errorf("群ID必须是32个十六进制字符；未发送")
+	}
+	payload, err := buildPayload(selector, targetID, message)
+	if err != nil {
+		return result, err
 	}
 	if err := a.d.allowSend(); err != nil {
 		return result, err
 	}
-	payload, err := buildPayload(selector, targetID)
+	attemptID, err := a.d.newAttemptID()
 	if err != nil {
 		return result, err
 	}
+	result.AttemptID = attemptID
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -117,14 +122,14 @@ func (a *Adapter) send(attemptID, selector, targetID string) (result SendResult,
 	}
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
-		return result, fmt.Errorf("拒绝创建单次尝试记录（已存在则禁止重发）: %w", err)
+		return result, fmt.Errorf("拒绝创建发送记录（已存在则停止，不更换标识重试）: %w", err)
 	}
 	result.AttemptReserved = true
 	defer func() { err = errors.Join(err, f.Close()) }()
-	if err := appendEvent(f, map[string]any{"event": "attempt_reserved", "time": time.Now().UTC(), "attempt_id": attemptID, selector: targetID, "text": Message, "preflight": info, "cbData": len(payload), "delivery": Unknown}); err != nil {
+	if err := appendEvent(f, map[string]any{"event": "attempt_reserved", "time": time.Now().UTC(), "attempt_id": attemptID, selector: targetID, "text": message, "preflight": info, "cbData": len(payload), "delivery": Unknown}); err != nil {
 		return result, err
 	}
-	// 日志已占用，最终身份检查失败也保留记录；确认等待由命令层处理，模块只核对绑定实例。
+	// 记录已占用，最终身份检查失败也保留；不能把unknown结果当作未发送而自动重试。
 	target, info, err = a.d.check(a.exePath, &target)
 	if err != nil {
 		return result, recordFailure(f, err)
@@ -143,6 +148,15 @@ func (a *Adapter) send(attemptID, selector, targetID string) (result SendResult,
 		return result, fmt.Errorf("Win32调用未成功完成: error=%d timeout=%s；结果unknown，不重试", call.LastError, call.Timeout)
 	}
 	return result, nil
+}
+
+func newAttemptID() (string, error) {
+	// 128位随机值用于独立调用记录；磁盘仍独占创建，发生碰撞时直接失败，不重试。
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return "", fmt.Errorf("生成发送记录标识: %w", err)
+	}
+	return "NWT-GW-" + hex.EncodeToString(id[:]), nil
 }
 
 func validateAttemptID(attemptID string) error {

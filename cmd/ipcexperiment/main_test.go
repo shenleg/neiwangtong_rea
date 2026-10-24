@@ -30,13 +30,13 @@ func TestRejectArguments(t *testing.T) {
 	}
 }
 
-// TestNoImplicitAuthorization 验证不指定配置时没有群绑定，实际发送请求在执行前被拒绝。
-func TestNoImplicitAuthorization(t *testing.T) {
+// TestNoImplicitSend 验证只读命令没有隐式发送，实验发送缺少群目标时在执行前被拒绝。
+func TestNoImplicitSend(t *testing.T) {
 	calls := 0
-	execute := func(_ string, config ipc.Config, attemptID string, send bool, _ io.Reader, _ io.Writer) error {
+	execute := func(_ string, config ipc.Config, send bool, _ io.Reader, _ io.Writer) error {
 		calls++
-		if config.AuthorizedGroupID != "" || attemptID != "" || send {
-			t.Fatal("未指定配置却获得群绑定或发送请求")
+		if config.AuthorizedGroupID != "" || send {
+			t.Fatal("未指定配置却获得群目标或发送请求")
 		}
 		return nil
 	}
@@ -60,9 +60,9 @@ func TestConfigPreservesGroupID(t *testing.T) {
 		t.Fatalf("配置未原样读取: %v", err)
 	}
 	calls := 0
-	if err := runWith([]string{"-exe", "synthetic.exe", "-config", path}, func(exe string, config ipc.Config, attemptID string, send bool, _ io.Reader, out io.Writer) error {
+	if err := runWith([]string{"-exe", "synthetic.exe", "-config", path}, func(exe string, config ipc.Config, send bool, _ io.Reader, out io.Writer) error {
 		calls++
-		if exe != "synthetic.exe" || config.AuthorizedGroupID != id || attemptID != "" || send {
+		if exe != "synthetic.exe" || config.AuthorizedGroupID != id || send {
 			t.Fatal("配置未传递给只读预检，或隐式启用了发送")
 		}
 		return nil
@@ -108,7 +108,7 @@ func TestConfigRejectsAmbiguity(t *testing.T) {
 			if strings.Contains(err.Error(), "0123456789") {
 				t.Fatal("错误信息泄露配置值")
 			}
-			if err := runWith([]string{"-exe", "synthetic.exe", "-config", path}, func(string, ipc.Config, string, bool, io.Reader, io.Writer) error {
+			if err := runWith([]string{"-exe", "synthetic.exe", "-config", path}, func(string, ipc.Config, bool, io.Reader, io.Writer) error {
 				t.Fatal("无效配置进入实验流程")
 				return nil
 			}); err == nil {
@@ -122,7 +122,7 @@ func TestConfigRejectsAmbiguity(t *testing.T) {
 func TestUserConfigDoesNotEnableCommandSend(t *testing.T) {
 	path := writeTestConfig(t, `{"authorized_user_id":"synthetic-user_1"}`)
 	calls := 0
-	execute := func(_ string, config ipc.Config, _ string, send bool, _ io.Reader, _ io.Writer) error {
+	execute := func(_ string, config ipc.Config, send bool, _ io.Reader, _ io.Writer) error {
 		calls++
 		if send || config.AuthorizedUserID != "synthetic-user_1" || config.AuthorizedGroupID != "" {
 			t.Fatal("用户配置被改变或隐式请求发送")
@@ -132,7 +132,7 @@ func TestUserConfigDoesNotEnableCommandSend(t *testing.T) {
 	if err := runWith([]string{"-exe", "synthetic.exe", "-config", path}, execute); err != nil {
 		t.Fatal(err)
 	}
-	if err := runWith([]string{"-exe", "synthetic.exe", "-config", path, "-send", "-attempt-id", "NWT-GW-SYNTHETIC-USER"}, execute); err == nil {
+	if err := runWith([]string{"-exe", "synthetic.exe", "-config", path, "-send"}, execute); err == nil {
 		t.Fatal("仅用户配置仍进入命令发送")
 	}
 	if calls != 1 {

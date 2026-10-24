@@ -16,7 +16,9 @@ const syntheticAttemptID = "NWT-GW-CLI-SYNTHETIC-1"
 
 type fakeAdapter struct {
 	calls          int
-	attemptID      string
+	groupID        string
+	message        string
+	observationIDs []string
 	observations   []ipc.Observation
 	sendErr        error
 	observationErr error
@@ -25,15 +27,16 @@ type fakeAdapter struct {
 // Preflight 返回合成身份信息，不执行窗口查询或输出，且不会报错。
 func (a *fakeAdapter) Preflight() (ipc.Preflight, error) { return ipc.Preflight{}, nil }
 
-// SendGroup 记录命令传入的标识并返回合成调用事实或注入错误，不执行IPC。
-func (a *fakeAdapter) SendGroup(attemptID string) (ipc.SendResult, error) {
+// SendGroup 保存命令传入的目标和正文，返回合成记录标识、调用事实及注入错误，不执行IPC。
+func (a *fakeAdapter) SendGroup(groupID, message string) (ipc.SendResult, error) {
 	a.calls++
-	a.attemptID = attemptID
-	return ipc.SendResult{AttemptID: attemptID, AttemptReserved: true, Call: ipc.CallResult{Invoked: true, Completed: a.sendErr == nil, APIReturn: 1, LResult: 1, LResultValid: true}, Delivery: ipc.Unknown}, a.sendErr
+	a.groupID, a.message = groupID, message
+	return ipc.SendResult{AttemptID: syntheticAttemptID, AttemptReserved: true, Call: ipc.CallResult{Invoked: true, Completed: a.sendErr == nil, APIReturn: 1, LResult: 1, LResultValid: true}, Delivery: ipc.Unknown}, a.sendErr
 }
 
 // RecordObservation 记录命令委托的观察，模拟独立接收判定或注入错误，不访问日志。
-func (a *fakeAdapter) RecordObservation(_ string, observation ipc.Observation) (ipc.Delivery, error) {
+func (a *fakeAdapter) RecordObservation(attemptID string, observation ipc.Observation) (ipc.Delivery, error) {
+	a.observationIDs = append(a.observationIDs, attemptID)
 	a.observations = append(a.observations, observation)
 	if a.observationErr != nil {
 		return ipc.Unknown, a.observationErr
@@ -49,19 +52,12 @@ func confirmedInput(observations string) *strings.Reader {
 	return strings.NewReader("SEND ONCE " + syntheticGroupID + " " + ipc.Message + "\n" + observations)
 }
 
-// TestAuthorizedConfirmation 验证正文仍为已验证0001，而命令不再隐式复用已占用的固定任务标识。
-func TestAuthorizedConfirmation(t *testing.T) {
-	if ipc.Message != "NWT-GW-AUTH-TEST-0001" {
-		t.Fatal("固定正文发生变化")
-	}
-	config := writeTestConfig(t, `{"authorized_group_id":"`+syntheticGroupID+`"}`)
-	called := false
-	err := runWith([]string{"-exe", "synthetic.exe", "-config", config, "-send"}, func(string, ipc.Config, string, bool, io.Reader, io.Writer) error {
-		called = true
-		return nil
-	})
-	if err == nil || called {
-		t.Fatal("未提供独立任务标识仍进入发送")
+// TestFixedMessageConfirmation 验证确认使用原固定正文，而非接受任意消息文本。
+func TestFixedMessageConfirmation(t *testing.T) {
+	a := &fakeAdapter{}
+	input := strings.NewReader("SEND ONCE " + syntheticGroupID + " other-message\n")
+	if err := runWithAdapter(syntheticGroupID, true, input, io.Discard, a); err == nil || a.calls != 0 {
+		t.Fatal("其他正文的确认触发发送")
 	}
 }
 
@@ -69,7 +65,7 @@ func TestAuthorizedConfirmation(t *testing.T) {
 func TestConfirmationExact(t *testing.T) {
 	for _, input := range []string{"", "yes\n", "SEND ONCE " + syntheticGroupID + " " + ipc.Message, " SEND ONCE " + syntheticGroupID + " " + ipc.Message + "\n"} {
 		a := &fakeAdapter{}
-		if err := runWithAdapter(syntheticGroupID, syntheticAttemptID, true, strings.NewReader(input), io.Discard, a); err == nil {
+		if err := runWithAdapter(syntheticGroupID, true, strings.NewReader(input), io.Discard, a); err == nil {
 			t.Fatal("错误确认被接受")
 		}
 		if a.calls != 0 || len(a.observations) != 0 {
@@ -82,7 +78,7 @@ func TestConfirmationExact(t *testing.T) {
 func TestCLIReadOnly(t *testing.T) {
 	a := &fakeAdapter{}
 	var out bytes.Buffer
-	if err := runWithAdapter(syntheticGroupID, "", false, strings.NewReader(""), &out, a); err != nil {
+	if err := runWithAdapter(syntheticGroupID, false, strings.NewReader(""), &out, a); err != nil {
 		t.Fatal(err)
 	}
 	if a.calls != 0 || len(a.observations) != 0 || strings.Contains(out.String(), syntheticGroupID) {
@@ -94,15 +90,15 @@ func TestCLIReadOnly(t *testing.T) {
 func TestCLIUsesAdapter(t *testing.T) {
 	a := &fakeAdapter{}
 	var out bytes.Buffer
-	if err := runWithAdapter(syntheticGroupID, syntheticAttemptID, true, confirmedInput("stable\none\none\n"), &out, a); err != nil {
+	if err := runWithAdapter(syntheticGroupID, true, confirmedInput("stable\none\none\n"), &out, a); err != nil {
 		t.Fatal(err)
 	}
-	if a.calls != 1 || a.attemptID != syntheticAttemptID || len(a.observations) != 3 {
+	if a.calls != 1 || a.groupID != syntheticGroupID || a.message != ipc.Message || len(a.observations) != 3 {
 		t.Fatal("命令未完整委托给Adapter")
 	}
 	for i, kind := range []ipc.ObservationKind{ipc.ClientObservation, ipc.SenderObservation, ipc.RecipientObservation} {
-		if a.observations[i].Kind != kind {
-			t.Fatal("观察来源顺序错误")
+		if a.observations[i].Kind != kind || a.observationIDs[i] != syntheticAttemptID {
+			t.Fatal("观察来源顺序错误或未使用Adapter返回的记录标识")
 		}
 	}
 	if !strings.Contains(out.String(), "recipient_observed") {
@@ -114,7 +110,7 @@ func TestCLIUsesAdapter(t *testing.T) {
 func TestCLIAdapterFailureStops(t *testing.T) {
 	want := errors.New("timeout")
 	a := &fakeAdapter{sendErr: want}
-	err := runWithAdapter(syntheticGroupID, syntheticAttemptID, true, confirmedInput(""), io.Discard, a)
+	err := runWithAdapter(syntheticGroupID, true, confirmedInput(""), io.Discard, a)
 	if !errors.Is(err, want) || a.calls != 1 || len(a.observations) != 0 {
 		t.Fatal("模块错误未直接返回")
 	}
@@ -124,7 +120,7 @@ func TestCLIAdapterFailureStops(t *testing.T) {
 func TestCLIObservationFailureStops(t *testing.T) {
 	want := errors.New("client unknown")
 	a := &fakeAdapter{observationErr: want}
-	err := runWithAdapter(syntheticGroupID, syntheticAttemptID, true, confirmedInput("unknown\none\none\n"), io.Discard, a)
+	err := runWithAdapter(syntheticGroupID, true, confirmedInput("unknown\none\none\n"), io.Discard, a)
 	if !errors.Is(err, want) || a.calls != 1 || len(a.observations) != 1 {
 		t.Fatal("观察错误后仍继续")
 	}
@@ -133,7 +129,7 @@ func TestCLIObservationFailureStops(t *testing.T) {
 // TestCLIInterruptedObservation 验证调用后输入结束只报告缺少观察，不伪造结果或再发消息。
 func TestCLIInterruptedObservation(t *testing.T) {
 	a := &fakeAdapter{}
-	if err := runWithAdapter(syntheticGroupID, syntheticAttemptID, true, confirmedInput(""), io.Discard, a); err == nil {
+	if err := runWithAdapter(syntheticGroupID, true, confirmedInput(""), io.Discard, a); err == nil {
 		t.Fatal("缺少观察却成功")
 	}
 	if a.calls != 1 || len(a.observations) != 0 {

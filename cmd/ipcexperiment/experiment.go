@@ -13,21 +13,21 @@ import (
 
 type experimentAdapter interface {
 	Preflight() (ipc.Preflight, error)
-	SendGroup(string) (ipc.SendResult, error)
+	SendGroup(string, string) (ipc.SendResult, error)
 	RecordObservation(string, ipc.Observation) (ipc.Delivery, error)
 }
 
-func runExperiment(exePath string, config ipc.Config, attemptID string, send bool, in io.Reader, out io.Writer) error {
-	adapter, err := ipc.NewAdapter(exePath, config)
+func runExperiment(exePath string, config ipc.Config, send bool, in io.Reader, out io.Writer) error {
+	adapter, err := ipc.NewAdapter(exePath)
 	if err != nil {
 		return err
 	}
-	return runWithAdapter(config.AuthorizedGroupID, attemptID, send, in, out, adapter)
+	return runWithAdapter(config.AuthorizedGroupID, send, in, out, adapter)
 }
 
-func runWithAdapter(groupID, attemptID string, send bool, in io.Reader, out io.Writer, adapter experimentAdapter) error {
+func runWithAdapter(groupID string, send bool, in io.Reader, out io.Writer, adapter experimentAdapter) error {
 	if send && groupID == "" {
-		return fmt.Errorf("尚未绑定唯一授权group_id；未发送")
+		return fmt.Errorf("尚未提供实验group_id；未发送")
 	}
 	info, err := adapter.Preflight()
 	if err != nil {
@@ -40,7 +40,7 @@ func runWithAdapter(groupID, attemptID string, send bool, in io.Reader, out io.W
 		return nil
 	}
 	phrase := "SEND ONCE " + groupID + " " + ipc.Message
-	if _, err := fmt.Fprintf(out, "仅限正常授权客户端和唯一授权原生群；本次请求不得重试。\nattempt_id=%s\ngroup_id=%s\ntext=%s\n请确认独立接收方已就绪；输入以下完整一行才调用一次：\n%s\n", attemptID, groupID, ipc.Message, phrase); err != nil {
+	if _, err := fmt.Fprintf(out, "仅限正常授权客户端和已确认的实验原生群；本次请求不得重试。\ngroup_id=%s\ntext=%s\n请确认独立接收方已就绪；输入以下完整一行才调用一次：\n%s\n", groupID, ipc.Message, phrase); err != nil {
 		return err
 	}
 	reader := bufio.NewReader(in)
@@ -53,7 +53,7 @@ func runWithAdapter(groupID, attemptID string, send bool, in io.Reader, out io.W
 	}
 
 	// 确认等待不进入Adapter；SendGroup会重新核对构造时绑定的实例，再占用日志并调用一次。
-	result, sendErr := adapter.SendGroup(attemptID)
+	result, sendErr := adapter.SendGroup(groupID, ipc.Message)
 	if result.AttemptReserved {
 		if err := json.NewEncoder(out).Encode(result); err != nil {
 			return err
@@ -79,7 +79,7 @@ func runWithAdapter(groupID, attemptID string, send bool, in io.Reader, out io.W
 		if err != nil {
 			return fmt.Errorf("外部观察未完成，送达仍为unknown: %w", err)
 		}
-		delivery, err = adapter.RecordObservation(attemptID, ipc.Observation{Kind: prompt.kind, State: state})
+		delivery, err = adapter.RecordObservation(result.AttemptID, ipc.Observation{Kind: prompt.kind, State: state})
 		if err != nil {
 			return err
 		}

@@ -38,9 +38,9 @@ func TestPayload(t *testing.T) {
 	if Message != "NWT-GW-AUTH-TEST-0001" {
 		t.Fatal("固定正文发生变化")
 	}
-	for _, selector := range []string{"group_id", "user_id"} {
-		for _, id := range []string{"synthetic-target_1", strings.Repeat("A", 199)} {
-			b, err := buildPayload(selector, id)
+	for selector, ids := range map[string][]string{"group_id": {testGroupID}, "user_id": {"synthetic-target_1", strings.Repeat("A", 199)}} {
+		for _, id := range ids {
+			b, err := buildPayload(selector, id, Message)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -63,13 +63,14 @@ func TestPayload(t *testing.T) {
 // TestPayloadRejectsInvalidID 验证空值、正文覆盖、NUL、非ASCII和列表样式输入在本地被拒绝。
 func TestPayloadRejectsInvalidID(t *testing.T) {
 	for _, id := range []string{"", strings.Repeat("A", 200), "a\x00b", "a,b", "a;b", "a|b", " a", "a\nb", "群", "*", "[a]"} {
-		if _, err := buildPayload("group_id", id); err == nil {
+		if _, err := buildPayload("group_id", id, Message); err == nil {
 			t.Fatalf("未拒绝 %q", id)
 		}
 	}
 }
 
-// fixture 提供合成定位、测试日志和模拟发送；返回依赖、日志路径与调用计数，错误由测试注入。
+// fixture 为t创建合成定位、固定生成标识、测试日志和模拟发送，返回依赖、日志路径与调用计数。
+// 临时文件读取失败报告给t；依赖错误由具体测试注入，不访问真实客户端。
 func fixture(t *testing.T) (dependencies, string, *int) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "attempt.jsonl")
@@ -78,16 +79,22 @@ func fixture(t *testing.T) (dependencies, string, *int) {
 		check: func(string, *windowprobe.Target) (windowprobe.Target, Preflight, error) {
 			return windowprobe.Target{}, Preflight{}, nil
 		},
-		journalPath: func(string) (string, error) { return path, nil },
-		allowSend:   func() error { return nil },
+		journalPath:  func(string) (string, error) { return path, nil },
+		allowSend:    func() error { return nil },
+		newAttemptID: func() (string, error) { return testAttemptID, nil },
 		send: func(_ windowprobe.Target, payload []byte) (CallResult, error) {
 			*calls++
 			data, err := os.ReadFile(path)
 			if err != nil || !bytes.Contains(data, []byte("attempt_reserved")) {
 				t.Error("调用前没有持久尝试记录")
 			}
-			if string(payload[0x12c:len(payload)-1]) != Message {
-				t.Error("固定载荷发生变化")
+			var reserved storedEvent
+			if err := json.NewDecoder(bytes.NewReader(data)).Decode(&reserved); err != nil {
+				t.Fatal(err)
+			}
+			text, err := decodeJSONString(reserved.Text)
+			if err != nil || string(payload[bodyOffset:len(payload)-1]) != text {
+				t.Error("载荷正文与调用前日志不一致")
 			}
 			return classifyCall(1, 1, 0, time.Millisecond), nil
 		},
@@ -95,25 +102,27 @@ func fixture(t *testing.T) (dependencies, string, *int) {
 	return d, path, calls
 }
 
-// adapterFixture 用合成依赖创建实际Adapter，构造错误终止测试；不绕过Adapter方法执行过程。
-func adapterFixture(t *testing.T, config Config, d dependencies) *Adapter {
+// adapterFixture 为t用d提供的合成依赖创建并返回Adapter；构造失败终止测试。
+func adapterFixture(t *testing.T, d dependencies) *Adapter {
 	t.Helper()
-	a, err := newAdapter("synthetic.exe", config, d)
+	a, err := newAdapter("synthetic.exe", d)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return a
 }
 
-// TestReadOnlyAndUnbound 验证无绑定配置仅可预检，不创建尝试记录或调用发送。
-func TestReadOnlyAndUnbound(t *testing.T) {
+// TestReadOnlyAndEmptyTarget 验证构造和预检只读，空群ID不创建记录或调用发送。
+func TestReadOnlyAndEmptyTarget(t *testing.T) {
 	d, path, calls := fixture(t)
-	a := adapterFixture(t, Config{}, d)
+	d.newAttemptID = func() (string, error) { t.Fatal("只读操作仍生成标识"); return "", nil }
+	d.journalPath = func(string) (string, error) { t.Fatal("只读操作仍访问日志路径"); return "", nil }
+	a := adapterFixture(t, d)
 	if _, err := a.Preflight(); err != nil {
 		t.Fatal(err)
 	}
-	if result, err := a.SendGroup(testAttemptID); err == nil || result.AttemptReserved || result.Call.Invoked {
-		t.Fatal("未绑定群仍可发送")
+	if result, err := a.SendGroup("", Message); err == nil || result.AttemptReserved || result.Call.Invoked {
+		t.Fatal("空群ID仍可发送")
 	}
 	if *calls != 0 {
 		t.Fatal("发生发送")
@@ -123,10 +132,10 @@ func TestReadOnlyAndUnbound(t *testing.T) {
 	}
 }
 
-// TestBoundReadOnly 验证已绑定群的Adapter预检仍不发送、不占用日志，结构化结果不含群ID。
+// TestBoundReadOnly 验证已绑定客户端的Adapter预检不发送、不占用日志，结构化结果不含目标ID。
 func TestBoundReadOnly(t *testing.T) {
 	d, path, calls := fixture(t)
-	a := adapterFixture(t, Config{AuthorizedGroupID: testGroupID}, d)
+	a := adapterFixture(t, d)
 	info, err := a.Preflight()
 	if err != nil {
 		t.Fatal(err)
@@ -143,15 +152,15 @@ func TestBoundReadOnly(t *testing.T) {
 	}
 }
 
-// TestOneAttemptPersists 验证同实例、重建实例都被既有标识拒绝；API成功仍只返回Unknown。
+// TestOneAttemptPersists 验证注入相同生成标识时，同实例和重建实例均拒绝旧记录；API成功仍只返回Unknown。
 func TestOneAttemptPersists(t *testing.T) {
 	d, path, calls := fixture(t)
-	a := adapterFixture(t, Config{AuthorizedGroupID: testGroupID}, d)
-	result, err := a.SendGroup(testAttemptID)
+	a := adapterFixture(t, d)
+	result, err := a.SendGroup(testGroupID, Message)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if *calls != 1 || !result.AttemptReserved || !result.Call.Completed || result.Delivery != Unknown {
+	if *calls != 1 || result.AttemptID != testAttemptID || !result.AttemptReserved || !result.Call.Completed || result.Delivery != Unknown {
 		t.Fatalf("错误的单次结果: %+v", result)
 	}
 	data, err := os.ReadFile(path)
@@ -164,8 +173,8 @@ func TestOneAttemptPersists(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, adapter := range []*Adapter{a, adapterFixture(t, Config{AuthorizedGroupID: testGroupID}, d)} {
-		if _, err := adapter.SendGroup(testAttemptID); err == nil {
+	for _, adapter := range []*Adapter{a, adapterFixture(t, d)} {
+		if _, err := adapter.SendGroup(testGroupID, Message); err == nil {
 			t.Fatal("已有任务未被拒绝")
 		}
 	}
@@ -190,8 +199,8 @@ func TestFinalIdentityChange(t *testing.T) {
 		}
 		return windowprobe.Target{}, Preflight{}, nil
 	}
-	a := adapterFixture(t, Config{AuthorizedGroupID: testGroupID}, d)
-	result, err := a.SendGroup(testAttemptID)
+	a := adapterFixture(t, d)
+	result, err := a.SendGroup(testGroupID, Message)
 	if err == nil || !result.AttemptReserved || result.Call.Invoked || *calls != 0 {
 		t.Fatal("最终身份变化未阻止发送或丢失占用事实")
 	}
@@ -199,7 +208,7 @@ func TestFinalIdentityChange(t *testing.T) {
 	if err != nil || !bytes.Contains(data, []byte("stopped_before_call")) {
 		t.Fatalf("停止记录缺失: %v", err)
 	}
-	if _, err := a.SendGroup(testAttemptID); err == nil || *calls != 0 {
+	if _, err := a.SendGroup(testGroupID, Message); err == nil || *calls != 0 {
 		t.Fatal("最终检查失败后恢复了发送资格")
 	}
 }
@@ -212,16 +221,16 @@ func TestCallFailureAndTimeoutNeverRetry(t *testing.T) {
 			*calls++
 			return classifyCall(0, 0, code, 5*time.Second), nil
 		}
-		a := adapterFixture(t, Config{AuthorizedGroupID: testGroupID}, d)
-		result, err := a.SendGroup(testAttemptID)
-		if err == nil || result.Call.LastError != code || !result.Call.Invoked || result.Delivery != Unknown || *calls != 1 {
+		a := adapterFixture(t, d)
+		result, err := a.SendGroup(testGroupID, Message)
+		if err == nil || result.AttemptID != testAttemptID || !result.AttemptReserved || result.Call.LastError != code || !result.Call.Invoked || result.Delivery != Unknown || *calls != 1 {
 			t.Fatalf("失败结果不完整: %+v %v", result, err)
 		}
 		data, err := os.ReadFile(path)
 		if err != nil || bytes.Contains(data, []byte("recipient_observed")) {
 			t.Fatal("无接收证据却标记送达")
 		}
-		if _, err := a.SendGroup(testAttemptID); err == nil || *calls != 1 {
+		if _, err := a.SendGroup(testGroupID, Message); err == nil || *calls != 1 {
 			t.Fatal("失败任务被重试")
 		}
 	}
@@ -235,11 +244,11 @@ func TestConcurrentAttempt(t *testing.T) {
 		calls.Add(1)
 		return classifyCall(1, 1, 0, time.Millisecond), nil
 	}
-	adapters := []*Adapter{adapterFixture(t, Config{AuthorizedGroupID: testGroupID}, d), adapterFixture(t, Config{AuthorizedGroupID: testGroupID}, d)}
+	adapters := []*Adapter{adapterFixture(t, d), adapterFixture(t, d)}
 	var wg sync.WaitGroup
 	for _, a := range adapters {
 		wg.Add(1)
-		go func(a *Adapter) { defer wg.Done(); _, _ = a.SendGroup(testAttemptID) }(a)
+		go func(a *Adapter) { defer wg.Done(); _, _ = a.SendGroup(testGroupID, Message) }(a)
 	}
 	wg.Wait()
 	if calls.Load() != 1 {
