@@ -1,0 +1,26 @@
+{
+  "text_frame": {
+    "ascii_spaces": 60,
+    "lf": 6,
+    "escaped_units": 446
+  },
+  "link_frame": {
+    "ascii_spaces": 46,
+    "lf": 5,
+    "escaped_units": 328
+  },
+  "root_frame": {
+    "ascii_spaces": 44,
+    "lf": 11,
+    "escaped_units": 501
+  },
+  "per_input_byte": 7,
+  "per_fragment_bound": 450,
+  "metadata_bound": 1024,
+  "uniform_coefficient": 457,
+  "body_limit_utf8_bytes": 512,
+  "escaped_json_bound_at_limit": 235008,
+  "budget": 261950,
+  "remaining_units": 26942,
+  "synthetic_character_checks": 8
+}
