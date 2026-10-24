@@ -1,0 +1,29 @@
+{
+  "page_size": 1024,
+  "expected_groups": {
+    "QGroupInfo_TESTID_A": [
+      [
+        "测试群 Alpha",
+        "g-alpha-001"
+      ],
+      [
+        "Beta 群",
+        "g-beta-002"
+      ],
+      [
+        "Beta 群",
+        "g-beta-003"
+      ],
+      [
+        "Gamma 群",
+        "g-gamma-004"
+      ]
+    ]
+  },
+  "sha256": "99185c11450c5d21a714cd8b0a33a90d1c78cfb4ef6281cb42f76ee1d8be03b6",
+  "utf16_sha256": "adce5afa56f1a698d36536c37b1d0d0d0b243d85ac28acd7063b94cd0b992079",
+  "tables": [
+    "QGroupInfo_TESTID_A",
+    "QGroupInfo_TESTID_B"
+  ]
+}

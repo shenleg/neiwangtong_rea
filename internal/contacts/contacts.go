@@ -1,9 +1,9 @@
 // 本文件提供联系人库的公开入口：副本校验与整库解密、身份表发现、姓名→user_id 精确匹配。
+// SQLite 映像解析复用 internal/sqliteread，本包只负责 nr codec 解密与 OrgStruct 行语义。
 package contacts
 
 import (
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/xml"
 	"errors"
@@ -13,6 +13,8 @@ import (
 	"os"
 	"strings"
 	"unicode/utf8"
+
+	"neiwangtong-gateway/internal/sqliteread"
 )
 
 // Contact 是一条 Type=1 的原生用户联系人：Name 为 Data XML 的原始名称，UserID 为 Id 列原值。
@@ -29,25 +31,21 @@ type tableInfo struct {
 
 // DB 是已解密并通过文件头与表结构校验的离线 nr 联系人库；零值不可用，必须经 Open 创建。
 type DB struct {
-	file     dbImage
+	file     *sqliteread.Image
 	tables   []tableInfo
 	checksum string
 }
 
 // Open 只读打开 path 指定的完整离线 nr 副本，用 password 的精确字节派生密钥并整库解密。
-// 拒绝空口令、同名 -wal/-shm/-journal 边文件、WAL 头、非零 reserved、非 UTF-8 文本编码
+// 拒绝空口令、同名 -wal/-shm/-journal 边文件、WAL 头、非零 reserved、非 UTF-8/UTF-16 文本编码
 // 及页长/长度校验不通过的文件；未找到结构相符的 OrgStruct_* 身份表时同样返回错误。
 // 口令须为客户端使用的原始窄字符串字节，不做 trim 或编码转换。
 func Open(path string, password []byte) (*DB, error) {
 	if len(password) == 0 {
 		return nil, errors.New("口令不能为空；须传入客户端使用的原始窄字符串字节")
 	}
-	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
-		if _, err := os.Stat(path + suffix); err == nil {
-			return nil, fmt.Errorf("存在边文件 %s：须在客户端正常退出后取得完整副本，不删除边文件", path+suffix)
-		} else if !errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("检查边文件 %s: %w", path+suffix, err)
-		}
+	if err := rejectSidecars(path); err != nil {
+		return nil, err
 	}
 	ciphertext, err := os.ReadFile(path)
 	if err != nil {
@@ -62,19 +60,24 @@ func Open(path string, password []byte) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	info, err := validateHeader(head, len(ciphertext))
+	header, err := sqliteread.ParseHeader(head, len(ciphertext))
 	if err != nil {
 		return nil, err
 	}
-	pageCount := len(ciphertext) / info.pageSize
-	pages := make([][]byte, pageCount)
-	for i := range pages {
-		pages[i], err = decryptPage(baseKey, i+1, ciphertext[i*info.pageSize:(i+1)*info.pageSize])
+
+	plaintext := make([]byte, len(ciphertext))
+	for i := 0; i*header.PageSize < len(ciphertext); i++ {
+		page, err := decryptPage(baseKey, i+1, ciphertext[i*header.PageSize:(i+1)*header.PageSize])
 		if err != nil {
 			return nil, err
 		}
+		copy(plaintext[i*header.PageSize:], page)
 	}
-	db := &DB{file: dbImage{pages: pages, pageSize: info.pageSize, encoding: info.encoding}}
+	image, err := sqliteread.NewImage(plaintext)
+	if err != nil {
+		return nil, err
+	}
+	db := &DB{file: image}
 	tables, err := db.discoverTables()
 	if err != nil {
 		return nil, err
@@ -82,6 +85,18 @@ func Open(path string, password []byte) (*DB, error) {
 	db.tables = tables
 	db.checksum = hex.EncodeToString(sha256Sum(ciphertext))
 	return db, nil
+}
+
+// rejectSidecars 拒绝存在同名 -wal/-shm/-journal 边文件的副本；须在客户端正常退出后取完整副本。
+func rejectSidecars(path string) error {
+	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
+		if _, err := os.Stat(path + suffix); err == nil {
+			return fmt.Errorf("存在边文件 %s：须在客户端正常退出后取得完整副本，不删除边文件", path+suffix)
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("检查边文件 %s: %w", path+suffix, err)
+		}
+	}
+	return nil
 }
 
 // Tables 返回库中全部 OrgStruct_* 身份表名，按名称排序。
@@ -96,7 +111,7 @@ func (db *DB) Tables() []string {
 
 // PageSize 返回从解密文件头恢复的实际页长。
 func (db *DB) PageSize() int {
-	return db.file.pageSize
+	return db.file.PageSize()
 }
 
 // SHA256 返回源密文的 SHA-256 十六进制摘要，供输出与副本核对。
@@ -113,35 +128,35 @@ func (db *DB) LoadUsers(table string) ([]Contact, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := db.file.tableRows(info.root)
+	rows, err := db.file.TableRows(info.root)
 	if err != nil {
 		return nil, fmt.Errorf("读取表 %s: %w", table, err)
 	}
 	users := make([]Contact, 0, len(rows))
 	for _, row := range rows {
-		values, err := decodeRecord(row.payload, db.file.encoding)
+		values, err := sqliteread.DecodeRecord(row.Payload, db.file.Encoding())
 		if err != nil {
-			return nil, fmt.Errorf("表 %s rowid %d: %w", table, row.rowid, err)
+			return nil, fmt.Errorf("表 %s rowid %d: %w", table, row.Rowid, err)
 		}
 		if len(values) < 6 {
-			return nil, fmt.Errorf("表 %s rowid %d 列数 %d 不足 6", table, row.rowid, len(values))
+			return nil, fmt.Errorf("表 %s rowid %d 列数 %d 不足 6", table, row.Rowid, len(values))
 		}
-		if values[3].kind != valueInt || values[3].int != 1 {
+		if values[3].Kind != sqliteread.KindInt || values[3].Int != 1 {
 			continue // 非原生用户条目（部门等），不参与联系人映射
 		}
-		if values[4].kind != valueText {
-			return nil, fmt.Errorf("表 %s rowid %d 的 Id 不是文本", table, row.rowid)
+		if values[4].Kind != sqliteread.KindText {
+			return nil, fmt.Errorf("表 %s rowid %d 的 Id 不是文本", table, row.Rowid)
 		}
-		id := values[4].text
+		id := values[4].Text
 		if id == "" || strings.ContainsRune(id, 0) || !utf8.ValidString(id) {
-			return nil, fmt.Errorf("表 %s rowid %d 的 Id 为空、含 NUL 或非有效 UTF-8", table, row.rowid)
+			return nil, fmt.Errorf("表 %s rowid %d 的 Id 为空、含 NUL 或非有效 UTF-8", table, row.Rowid)
 		}
-		if values[5].kind != valueText {
-			return nil, fmt.Errorf("表 %s rowid %d 的 Data 不是文本", table, row.rowid)
+		if values[5].Kind != sqliteread.KindText {
+			return nil, fmt.Errorf("表 %s rowid %d 的 Data 不是文本", table, row.Rowid)
 		}
-		name, err := xmlUserName(values[5].text)
+		name, err := xmlUserName(values[5].Text)
 		if err != nil {
-			return nil, fmt.Errorf("表 %s rowid %d 的 Data XML: %w", table, row.rowid, err)
+			return nil, fmt.Errorf("表 %s rowid %d 的 Data XML: %w", table, row.Rowid, err)
 		}
 		if name == "" {
 			continue
@@ -179,32 +194,32 @@ func (db *DB) findTable(name string) (tableInfo, error) {
 
 // discoverTables 从 sqlite_master 收集 OrgStruct_* 表并做轻量 DDL 核对。
 func (db *DB) discoverTables() ([]tableInfo, error) {
-	rows, err := db.file.tableRows(1)
+	rows, err := db.file.TableRows(1)
 	if err != nil {
 		return nil, fmt.Errorf("读取 sqlite_master: %w", err)
 	}
 	var tables []tableInfo
 	for _, row := range rows {
-		values, err := decodeRecord(row.payload, db.file.encoding)
+		values, err := sqliteread.DecodeRecord(row.Payload, db.file.Encoding())
 		if err != nil {
-			return nil, fmt.Errorf("sqlite_master rowid %d: %w", row.rowid, err)
+			return nil, fmt.Errorf("sqlite_master rowid %d: %w", row.Rowid, err)
 		}
-		if len(values) < 5 || values[0].kind != valueText || values[1].kind != valueText {
-			return nil, fmt.Errorf("sqlite_master rowid %d 结构异常", row.rowid)
+		if len(values) < 5 || values[0].Kind != sqliteread.KindText || values[1].Kind != sqliteread.KindText {
+			return nil, fmt.Errorf("sqlite_master rowid %d 结构异常", row.Rowid)
 		}
-		if values[0].text != "table" || !strings.HasPrefix(values[1].text, "OrgStruct_") {
+		if values[0].Text != "table" || !strings.HasPrefix(values[1].Text, "OrgStruct_") {
 			continue
 		}
-		if values[3].kind != valueInt || values[3].int <= 0 {
-			return nil, fmt.Errorf("身份表 %s 的根页号不是正整数", values[1].text)
+		if values[3].Kind != sqliteread.KindInt || values[3].Int <= 0 {
+			return nil, fmt.Errorf("身份表 %s 的根页号不是正整数", values[1].Text)
 		}
-		if values[4].kind != valueText {
-			return nil, fmt.Errorf("身份表 %s 缺少建表语句", values[1].text)
+		if values[4].Kind != sqliteread.KindText {
+			return nil, fmt.Errorf("身份表 %s 缺少建表语句", values[1].Text)
 		}
-		if err := checkOrgStructDDL(values[4].text); err != nil {
-			return nil, fmt.Errorf("身份表 %s 结构不符: %w", values[1].text, err)
+		if err := checkOrgStructDDL(values[4].Text); err != nil {
+			return nil, fmt.Errorf("身份表 %s 结构不符: %w", values[1].Text, err)
 		}
-		tables = append(tables, tableInfo{name: values[1].text, root: int(values[3].int)})
+		tables = append(tables, tableInfo{name: values[1].Text, root: int(values[3].Int)})
 	}
 	if len(tables) == 0 {
 		return nil, errors.New("库中没有 OrgStruct_* 身份表，不是本实例的联系人数据库")
@@ -236,50 +251,6 @@ func checkOrgStructDDL(sql string) error {
 		return errors.New("建表语句缺少 UNIQUE(Id) 唯一约束")
 	}
 	return nil
-}
-
-// headerInfo 是从解密文件头恢复的库参数。
-type headerInfo struct {
-	pageSize int
-	encoding int // SQLite 文本编码：1=UTF-8，2=UTF-16le，3=UTF-16be
-}
-
-// validateHeader 校验解密后的第一页文件头（前 64 字节）并返回页长与文本编码。
-// 只接受已验证的 8 种页长、rollback 读写版本、reserved=0、标准负载比例与
-// SQLite 定义的三种文本编码；真实客户端库实测为 UTF-16le。
-func validateHeader(head []byte, fileSize int) (headerInfo, error) {
-	if len(head) < 64 {
-		return headerInfo{}, errors.New("文件头不足 64 字节")
-	}
-	if string(head[:16]) != "SQLite format 3\x00" {
-		return headerInfo{}, errors.New("解密后未出现 SQLite 魔数：口令错误或文件不是 nr 数据库")
-	}
-	pageSize := int(head[16])<<8 | int(head[17])
-	if pageSize == 1 {
-		pageSize = 65536
-	}
-	switch pageSize {
-	case 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536:
-	default:
-		return headerInfo{}, fmt.Errorf("页长 %d 不在已验证的 8 种取值内", pageSize)
-	}
-	if head[18] != 1 || head[19] != 1 {
-		return headerInfo{}, errors.New("不是 rollback 日志模式的数据库头；WAL 模式副本不支持")
-	}
-	if head[20] != 0 {
-		return headerInfo{}, errors.New("reserved 字节非零，超出已验证的 codec 契约")
-	}
-	if head[21] != 64 || head[22] != 32 || head[23] != 32 {
-		return headerInfo{}, errors.New("负载比例字节与标准 SQLite 值不符")
-	}
-	encoding := int(binary.BigEndian.Uint32(head[56:60]))
-	if encoding < 1 || encoding > 3 {
-		return headerInfo{}, fmt.Errorf("文本编码值 %d 不是 SQLite 定义的 1/2/3", encoding)
-	}
-	if fileSize < pageSize || fileSize%pageSize != 0 {
-		return headerInfo{}, errors.New("文件长度不是页长的非零整数倍")
-	}
-	return headerInfo{pageSize: pageSize, encoding: encoding}, nil
 }
 
 // xmlUserName 提取 U 根下唯一直接 Name 子元素的完整文本，标准实体由解码器还原。
