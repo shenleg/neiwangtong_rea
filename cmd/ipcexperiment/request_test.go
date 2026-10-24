@@ -1,4 +1,4 @@
-// 本文件验证命令传递实验群目标及发送开关，不接收记录标识或开放任意正文参数。
+// 本文件验证命令传递实验目标及发送开关，不接收记录标识；正文仅经显式-text传递。
 package main
 
 import (
@@ -16,10 +16,10 @@ func TestSendWithoutAttemptArgument(t *testing.T) {
 	}
 	path := writeTestConfig(t, `{"authorized_group_id":"`+syntheticGroupID+`"}`)
 	calls := 0
-	err := runWith([]string{"-exe", "synthetic.exe", "-config", path, "-send"}, func(exe string, config ipc.Config, send bool, _ io.Reader, _ io.Writer) error {
+	err := runWith([]string{"-exe", "synthetic.exe", "-config", path, "-send"}, func(exe string, config ipc.Config, send bool, text string, _ io.Reader, _ io.Writer) error {
 		calls++
-		if exe != "synthetic.exe" || config.AuthorizedGroupID != syntheticGroupID || !send {
-			t.Fatal("未保留原始目标配置或显式发送请求")
+		if exe != "synthetic.exe" || config.AuthorizedGroupID != syntheticGroupID || !send || text != ipc.Message {
+			t.Fatal("未保留原始目标配置、发送请求或缺省固定正文")
 		}
 		return nil
 	})
@@ -34,7 +34,7 @@ func TestAttemptArgumentRemoved(t *testing.T) {
 		{"-exe", "synthetic.exe", "-attempt-id", syntheticAttemptID},
 		{"-exe", "synthetic.exe", "-attempt-id", "NWT-GW-ONE", "-attempt-id", "NWT-GW-TWO"},
 	} {
-		if err := runWith(args, func(string, ipc.Config, bool, io.Reader, io.Writer) error {
+		if err := runWith(args, func(string, ipc.Config, bool, string, io.Reader, io.Writer) error {
 			t.Fatal("旧标识参数仍进入执行")
 			return nil
 		}); err == nil {

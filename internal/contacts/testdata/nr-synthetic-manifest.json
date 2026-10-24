@@ -1,0 +1,47 @@
+{
+  "password": "nwt-go-contacts-fixture",
+  "password_hex": "6e77742d676f2d636f6e74616374732d66697874757265",
+  "page_size": 1024,
+  "codec_commit": "f29b06b424e556cf0ad8b19646b30dfc3e3e36d8",
+  "ciphertext_sha256": "1f66424ca9a76d6ed9d7c331c3d79c71ad1bef8e5830501d70604fca56b93f96",
+  "utf16_ciphertext_sha256": "35eac0d9a4054c44e803aedb0df753fe2c3803ecd84732c28420123ef2345c15",
+  "tables": [
+    "OrgStruct_TESTID_A",
+    "OrgStruct_TESTID_B",
+    "OrgStruct_TESTID_C"
+  ],
+  "expected_users": {
+    "OrgStruct_TESTID_A": [
+      [
+        "Alice 张三",
+        "u-alice-001"
+      ],
+      [
+        "Bob",
+        "u-bob-002"
+      ],
+      [
+        "Carol",
+        "u-carol-003"
+      ],
+      [
+        "Carol",
+        "u-carol-004"
+      ],
+      [
+        "Dave",
+        "u-dave-005"
+      ],
+      [
+        "A&B",
+        "u-entity-007"
+      ]
+    ],
+    "OrgStruct_TESTID_C": [
+      [
+        "Erin",
+        "u-erin-201"
+      ]
+    ]
+  }
+}
