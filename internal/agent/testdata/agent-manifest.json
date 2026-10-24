@@ -1,0 +1,37 @@
+{
+  "password": "nwt-go-contacts-fixture",
+  "nr_sha256": "415b5ff19a948683d329a923543aee8b9946596b6a46adf46f7efc882ad17cb4",
+  "qrp_sha256": "af0bdb68b55b89e57e46df03b06064784bd9e68a1fb00fa58b61a6f349fe88e6",
+  "expected_contacts": [
+    [
+      "Alice",
+      "agent-alice-01"
+    ],
+    [
+      "Bob",
+      "agent-bob-02"
+    ],
+    [
+      "Carol",
+      "agent-carol-03"
+    ],
+    [
+      "Carol",
+      "agent-carol-04"
+    ]
+  ],
+  "expected_groups": [
+    [
+      "研发群",
+      "agent-group-01"
+    ],
+    [
+      "值班群",
+      "agent-group-02"
+    ],
+    [
+      "值班群",
+      "agent-group-03"
+    ]
+  ]
+}

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>内网通 Agent API 文档</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --ink: #1f2328; --muted: #57606a;
+    --line: #d8dee4; --accent: #0969da; --green: #1a7f37; --orange: #9a6700;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--ink); }
+  header { background: #161b22; color: #fff; padding: 18px 28px; }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 4px 0 0; color: #9aa4b2; font-size: 13px; }
+  header code { background: #30363d; padding: 2px 6px; border-radius: 4px; color: #7ee787; }
+  main { max-width: 980px; margin: 0 auto; padding: 20px 28px 60px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin: 18px 0; overflow: hidden; }
+  .ep { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .method { font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 4px; color: #fff; min-width: 52px; text-align: center; }
+  .get .method { background: var(--accent); }
+  .post .method { background: var(--green); }
+  .path { font-family: Consolas, monospace; font-size: 15px; font-weight: 600; }
+  .body { padding: 12px 16px; }
+  .body p { margin: 6px 0; color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px; }
+  th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f2f5; }
+  code { font-family: Consolas, monospace; background: #f0f2f5; padding: 1px 5px; border-radius: 3px; font-size: 12.5px; }
+  pre { background: #161b22; color: #e6edf3; padding: 10px 14px; border-radius: 6px; overflow: auto; font-size: 12.5px; font-family: Consolas, monospace; }
+  pre .k { color: #79c0ff; } pre .s { color: #a5d6ff; } pre .n { color: #ffa657; }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; font-weight: 600; color: var(--accent); }
+  button { background: var(--green); color: #fff; border: none; border-radius: 5px; padding: 5px 14px; font-size: 13px; cursor: pointer; }
+  button:hover { opacity: .9; }
+  input, textarea { font: 13px Consolas, monospace; border: 1px solid var(--line); border-radius: 5px; padding: 5px 8px; width: 100%; }
+  .try { margin-top: 10px; padding: 10px; background: #f6f8fa; border: 1px dashed var(--line); border-radius: 6px; }
+  .try .row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .result { margin-top: 8px; }
+  .result .status { font-weight: 700; margin-bottom: 4px; }
+  .ok { color: var(--green); } .err { color: #cf222e; }
+  .note { background: #fff8c5; border: 1px solid #d4a72c66; padding: 10px 14px; border-radius: 6px; margin: 14px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>内网通 Agent API</h1>
+  <p>统一发送 API · 基地址 <code id="base"></code> · 初版本鉴权（仅本机回环）· <span id="client-state">检测客户端中…</span></p>
+</header>
+<main>
+
+<div class="note">
+  <b>纪律说明</b>：每次发送都是新的单次请求，不会自动重试；<code>delivery</code> 恒为 <code>unknown</code>，API 完成不代表送达。列表按实时数据库读取：撞上客户端写事务的那次请求返回 503，重试即可。
+</div>
+
+<section class="get">
+  <div class="ep"><span class="method">GET</span><span class="path">/health</span></div>
+  <div class="body">
+    <p>核对并返回当前客户端实例身份（PID、窗口、文件摘要、会话）；客户端未运行或多实例时 503。</p>
+    <div class="try"><button onclick="tryGet('/health', this)">试一下</button><div class="result"></div></div>
+  </div>
+</section>
+
+<section class="get">
+  <div class="ep"><span class="method">GET</span><span class="path">/contacts</span></div>
+  <div class="body">
+    <p>返回全部联系人（<code>contacts:[{name,user_id}]</code>），附身份表名、页长与源文件摘要。加 <code>?name=精确名称</code> 转为名称查询：唯一 200 <code>unique</code>；未命中 404 <code>not_found</code>；同名 409 <code>ambiguous</code>（返回全部候选，需人工选择）。</p>
+    <table>
+      <tr><th>参数</th><th>位置</th><th>说明</th></tr>
+      <tr><td><code>name</code></td><td>query，可选</td><td>联系人原始名称精确值（不是界面备注；保留大小写与空格）</td></tr>
+    </table>
+    <div class="try">
+      <div class="row"><input placeholder="可选：精确名称，如 PVE-WIN11" oninput="this.dataset.v=this.value"></div>
+      <button onclick="tryGet('/contacts'+(this.previousElementSibling.firstElementChild.dataset.v?'?name='+encodeURIComponent(this.previousElementSibling.firstElementChild.dataset.v):''), this)">试一下</button>
+      <div class="result"></div>
+    </div>
+  </div>
+</section>
+
+<section class="get">
+  <div class="ep"><span class="method">GET</span><span class="path">/groups</span></div>
+  <div class="body">
+    <p>返回全部群（<code>groups:[{name,group_id}]</code>）。加 <code>?name=精确名称</code> 的语义同 /contacts。</p>
+    <div class="try">
+      <div class="row"><input placeholder="可选：精确群名，如 qun" oninput="this.dataset.v=this.value"></div>
+      <button onclick="tryGet('/groups'+(this.previousElementSibling.firstElementChild.dataset.v?'?name='+encodeURIComponent(this.previousElementSibling.firstElementChild.dataset.v):''), this)">试一下</button>
+      <div class="result"></div>
+    </div>
+  </div>
+</section>
+
+<section class="post">
+  <div class="ep"><span class="method">POST</span><span class="path">/send/user</span></div>
+  <div class="body">
+    <p>向原始用户发送一次消息。目标二选一：<code>user_id</code>（推荐，来自 /contacts）或 <code>name</code>（先做唯一解析，404/409 同上）。</p>
+    <table>
+      <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+      <tr><td><code>user_id</code></td><td>string</td><td>目标用户 ID，与 <code>name</code> 二选一</td></tr>
+      <tr><td><code>name</code></td><td>string</td><td>联系人原始名称，与 <code>user_id</code> 二选一</td></tr>
+      <tr><td><code>text</code></td><td>string</td><td>必填。非空、UTF-8、无 NUL、按内容预算；字面 \n / \r\n 转实际换行</td></tr>
+    </table>
+    <details open><summary>请求示例</summary>
+      <pre>{
+  <span class="k">"user_id"</span>: <span class="s">"a1b2c3d4..."</span>,
+  <span class="k">"text"</span>: <span class="s">"hello world"</span>
+}</pre>
+    </details>
+    <details><summary>响应（200，调用事实）</summary>
+      <pre>{ <span class="k">"attempt_id"</span>: <span class="s">"NWT-GW-..."</span>, <span class="k">"attempt_reserved"</span>: <span class="n">true</span>,
+  <span class="k">"preflight"</span>: { <span class="k">"pid"</span>: <span class="n">1234</span>, ... }, <span class="k">"call"</span>: { <span class="k">"invoked"</span>: <span class="n">true</span>, ... },
+  <span class="k">"delivery"</span>: <span class="s">"unknown"</span> }</pre>
+    </details>
+    <div class="try">
+      <textarea rows="3">{"name": "", "text": "hello"}</textarea>
+      <div class="row" style="margin-top:8px"><button onclick="tryPost('/send/user', this)">发送（真实消息，单次）</button></div>
+      <div class="result"></div>
+    </div>
+  </div>
+</section>
+
+<section class="post">
+  <div class="ep"><span class="method">POST</span><span class="path">/send/group</span></div>
+  <div class="body">
+    <p>向原生群发送一次消息。目标二选一：<code>group_id</code>（32 位十六进制）或 <code>name</code>（群名唯一解析）。</p>
+    <div class="try">
+      <textarea rows="3">{"name": "", "text": "hello"}</textarea>
+      <div class="row" style="margin-top:8px"><button onclick="tryPost('/send/group', this)">发送（真实消息，单次）</button></div>
+      <div class="result"></div>
+    </div>
+    <p>错误映射：400 目标/正文校验失败或 JSON 非法 · 404 名称未命中 · 409 同名歧义 · 503 客户端不可用/快照未配置/写事务竞态 · 502 已占用日志但调用失败（仍携带 attempt_id）。</p>
+  </div>
+</section>
+
+<section>
+  <div class="ep"><span class="method" style="background:#57606a">INFO</span><span class="path">独立接收观察</span></div>
+  <div class="body">
+    <p>API 完成不代表送达。需要接收证据时，用响应里的 <code>attempt_id</code> 调用命令行记录独立观察：</p>
+    <pre>ipcexperiment.exe -exe 客户端路径 -observe NWT-GW-xxx -observe-kind recipient -observe-state one</pre>
+  </div>
+</section>
+
+</main>
+<script>
+document.getElementById('base').textContent = location.origin;
+// 页面加载即顺带探测客户端状态
+fetch('/health').then(r => r.ok ? r.json() : Promise.reject())
+  .then(d => document.getElementById('client-state').textContent = '客户端已连接（PID ' + d.pid + '）')
+  .catch(() => document.getElementById('client-state').textContent = '客户端未连接（/health 503）');
+
+function render(box, resp, bodyText) {
+  box.innerHTML = '<div class="status ' + (resp.ok ? 'ok' : 'err') + '">HTTP ' + resp.status + '</div><pre>' + bodyText + '</pre>';
+}
+function tryGet(path, btn) {
+  const box = btn.parentElement.querySelector('.result');
+  fetch(path).then(r => r.text().then(t => [r, t])).then(([r, t]) => {
+    render(box, r, pretty(t));
+  }).catch(e => box.innerHTML = '<div class="status err">请求失败：' + e + '</div>');
+}
+function tryPost(path, btn) {
+  const box = btn.closest('.try').querySelector('.result');
+  const raw = btn.closest('.try').querySelector('textarea').value;
+  let body;
+  try { body = JSON.stringify(JSON.parse(raw)); } catch (e) {
+    box.innerHTML = '<div class="status err">JSON 无效：' + e.message + '</div>'; return;
+  }
+  fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body })
+    .then(r => r.text().then(t => [r, t])).then(([r, t]) => render(box, r, pretty(t)))
+    .catch(e => box.innerHTML = '<div class="status err">请求失败：' + e + '</div>');
+}
+function pretty(t) {
+  try { return JSON.stringify(JSON.parse(t), null, 2); } catch (e) { return t; }
+}
+</script>
+</body>
+</html>
