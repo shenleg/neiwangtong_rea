@@ -1,0 +1,7 @@
+### capture start 2026-10-25T09:32:16.2593378+08:00
+### baseline done, requesting exit 2026-10-25T09:32:26.7894957+08:00
+poll 1: process count = 0  09:32:29.735
+### process gone confirmed; observing peer reactions
+### capture end 2026-10-25T09:34:16.7434610+08:00
+0
+### restoring client 2026-10-25T09:35:06.9592455+08:00

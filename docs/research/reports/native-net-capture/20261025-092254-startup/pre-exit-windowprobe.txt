@@ -1,0 +1,96 @@
+只读窗口快照 2026-10-25T01:22:56Z — 2026-10-25T01:22:56Z
+进程数=1 窗口数=20 候选数=1 评估=unique_unverified
+
+进程 PID=12916 name="ShiYeLine.exe" session=2
+  HWND=0x406D0 PID=12916 TID=7976 class="0b1afb6d3eaffe43b3f37262b97f1fa5" title=""
+    visible=false minimized=false top_level=true stable=true role=other_window candidate=false
+    owner=0x0 parent=0x10010 root=0x406D0 root_owner=0x406D0 style=0x04C00000 ex_style=0x00000100
+    rect=(0,0)-(136,39) size=136x39
+  HWND=0x50634 PID=12916 TID=7976 class="3ba38c286ff12a45b0291529b1b988fc" title=""
+    visible=false minimized=false top_level=true stable=true role=other_window candidate=false
+    owner=0x0 parent=0x10010 root=0x50634 root_owner=0x50634 style=0x04C00000 ex_style=0x00000100
+    rect=(0,0)-(136,39) size=136x39
+  HWND=0x50638 PID=12916 TID=7976 class="17bf93e9cd946545859bf10a70d12792" title=""
+    visible=false minimized=false top_level=true stable=true role=other_window candidate=false
+    owner=0x0 parent=0x10010 root=0x50638 root_owner=0x50638 style=0x04C00000 ex_style=0x00000100
+    rect=(0,0)-(136,39) size=136x39
+  HWND=0x50640 PID=12916 TID=8020 class="GDI+ Hook Window Class" title="GDI+ Window (ShiYeLine.exe)"
+    visible=false minimized=false top_level=true stable=true role=other_window candidate=false
+    owner=0x0 parent=0x10010 root=0x50640 root_owner=0x50640 style=0x84000000 ex_style=0x00000000
+    rect=(0,0)-(1,1) size=1x1
+  HWND=0x90614 PID=12916 TID=7976 class="dccd3fc16526c746b951cfbf2fe92a98" title=""
+    visible=false minimized=false top_level=true stable=true role=other_window candidate=false
+    owner=0x0 parent=0x10010 root=0x90614 root_owner=0x90614 style=0x04C00000 ex_style=0x00000100
+    rect=(0,0)-(136,39) size=136x39
+  HWND=0x90824 PID=12916 TID=7976 class="2c330a66c740794086bb6f7e3b167eb7" title=""
+    visible=false minimized=false top_level=true stable=true role=other_window candidate=false
+    owner=0x0 parent=0x10010 root=0x90824 root_owner=0x90824 style=0x04C00000 ex_style=0x00000100
+    rect=(0,0)-(136,39) size=136x39
+  HWND=0xB05D8 PID=12916 TID=7976 class="42d942111d4c79428747fc1677fce686" title=""
+    visible=false minimized=false top_level=true stable=true role=other_window candidate=false
+    owner=0x0 parent=0x10010 root=0xB05D8 root_owner=0xB05D8 style=0x04C00000 ex_style=0x00000100
+    rect=(0,0)-(136,39) size=136x39
+  HWND=0xB0606 PID=12916 TID=7976 class="7c81b40dc7236c49a058014d512dbfa9" title=""
+    visible=false minimized=false top_level=true stable=true role=other_window candidate=false
+    owner=0x0 parent=0x10010 root=0xB0606 root_owner=0xB0606 style=0x04C00000 ex_style=0x00000100
+    rect=(0,0)-(136,39) size=136x39
+  HWND=0xB061C PID=12916 TID=7976 class="3634ade8e32bb740a5418046993ce7ae" title=""
+    visible=false minimized=false top_level=true stable=true role=other_window candidate=false
+    owner=0x0 parent=0x10010 root=0xB061C root_owner=0xB061C style=0x04C00000 ex_style=0x00000100
+    rect=(0,0)-(136,39) size=136x39
+  HWND=0xF0610 PID=12916 TID=7976 class="27d1b117894da841b26e6540e5a8efa7" title=""
+    visible=false minimized=false top_level=true stable=true role=other_window candidate=false
+    owner=0x0 parent=0x10010 root=0xF0610 root_owner=0xF0610 style=0x04C00000 ex_style=0x00000100
+    rect=(0,0)-(136,39) size=136x39
+  HWND=0x100210 PID=12916 TID=7976 class="667e3cc22dba8741866ffe9563ac0c30" title=""
+    visible=false minimized=false top_level=true stable=true role=other_window candidate=false
+    owner=0x0 parent=0x10010 root=0x100210 root_owner=0x100210 style=0x04C00000 ex_style=0x00000100
+    rect=(0,0)-(136,39) size=136x39
+  HWND=0x1002F4 PID=12916 TID=7976 class="MSCTFIME UI" title="MSCTFIME UI"
+    visible=false minimized=false top_level=true stable=true role=other_window candidate=false
+    owner=0x1A0420 parent=0x10010 root=0x1002F4 root_owner=0x3705DA style=0x8C000000 ex_style=0x00000008
+    rect=(0,0)-(0,0) size=0x0
+  HWND=0x12016E PID=12916 TID=7976 class="5c8d5e2531ea164394620009735d5de5" title=""
+    visible=false minimized=false top_level=true stable=true role=other_window candidate=false
+    owner=0x0 parent=0x10010 root=0x12016E root_owner=0x12016E style=0x04C00000 ex_style=0x00000100
+    rect=(0,0)-(136,39) size=136x39
+  HWND=0x170552 PID=12916 TID=7976 class="45a125a0784f504f855e63890d96f87a" title=""
+    visible=false minimized=false top_level=true stable=true role=other_window candidate=false
+    owner=0x0 parent=0x10010 root=0x170552 root_owner=0x170552 style=0x04C00000 ex_style=0x00000100
+    rect=(0,0)-(136,39) size=136x39
+  HWND=0x1A0420 PID=12916 TID=7976 class="IME" title="Default IME"
+    visible=false minimized=false top_level=true stable=true role=other_window candidate=false
+    owner=0x450492 parent=0x10010 root=0x1A0420 root_owner=0x3705DA style=0x8C000000 ex_style=0x00000008
+    rect=(0,0)-(0,0) size=0x0
+  HWND=0x3705DA PID=12916 TID=7976 class="SkinDialog" title=""
+    visible=false minimized=false top_level=true stable=true role=hidden_owner_suspect candidate=false
+    owner=0x0 parent=0x10010 root=0x3705DA root_owner=0x3705DA style=0x8E0B0000 ex_style=0x00080000
+    rect=(0,0)-(0,0) size=0x0
+    判断依据: 隐藏、无 owner，且被同 PID 的另一个 SkinDialog 直接拥有关系引用。
+  HWND=0x3C0206 PID=12916 TID=8020 class="IME" title="Default IME"
+    visible=false minimized=false top_level=true stable=true role=other_window candidate=false
+    owner=0x50640 parent=0x10010 root=0x3C0206 root_owner=0x50640 style=0x8C000000 ex_style=0x00000000
+    rect=(0,0)-(0,0) size=0x0
+  HWND=0x450492 PID=12916 TID=7976 class="SkinDialog" title="单位名称"
+    visible=true minimized=false top_level=true stable=true role=main_candidate candidate=true
+    owner=0x3705DA parent=0x10010 root=0x450492 root_owner=0x3705DA style=0x960B0000 ex_style=0x00080008
+    rect=(1423,-572)-(1727,2) size=304x574
+    判断依据: 同名进程的稳定顶层 SkinDialog；仅凭通用类无法确认主窗口。
+    判断依据: 直接 owner 符合隐藏 owner 特征，与 0x4029d0 的创建关系一致。
+  HWND=0x5B0576 PID=12916 TID=7976 class="f468eee06ff7664fa7f030d81d1a14cd" title=""
+    visible=false minimized=false top_level=true stable=true role=other_window candidate=false
+    owner=0x0 parent=0x10010 root=0x5B0576 root_owner=0x5B0576 style=0x04C00000 ex_style=0x00000100
+    rect=(0,0)-(136,39) size=136x39
+  HWND=0x8605C4 PID=12916 TID=7976 class="48b5ecb41cb6b64e96ca5235beae0785" title=""
+    visible=false minimized=false top_level=true stable=true role=other_window candidate=false
+    owner=0x0 parent=0x10010 root=0x8605C4 root_owner=0x8605C4 style=0x04C00000 ex_style=0x00000100
+    rect=(0,0)-(136,39) size=136x39
+
+可靠性评估:
+  - 仅有一个候选，但未验证其 CMainDialog 身份；仍不可据此发送消息。
+  - 仅枚举调用线程所在 desktop 的顶层窗口（包含隐藏窗口）；不枚举子控件、message-only 窗口或其他 desktop。
+  - SkinDialog 是通用类；隐藏 owner 与主窗口的分类是基于 0x4029d0 / 0x524890 的启发式推断，不证明 CMainDialog 身份。
+  - 标题、可见性和尺寸不作为唯一身份依据；最小化或隐藏不直接排除主窗口。
+  - 未核实可执行文件路径、版本、哈希、登录状态、用户身份、完整性级别或 IPC 可达性。
+  - 窗口采集不是原子快照；PID/TID 和关系复查不能阻止复查后销毁或句柄复用，不能缓存为发送许可。
+  - 未发送 WM_COPYDATA 或其他探测消息，未验证业务接收与送达。
