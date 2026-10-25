@@ -4,7 +4,9 @@
 
 **超长正文异常未修复**：另经授权的261003字群聊/私聊各一次调用后，用户报告卡顿、退出及持续重试；用户自行重装后恢复，见 `docs/research/reports/ipc-phase12/custom-max-body-abnormal.md`。该值仅是静态序列化边界，不能作为产品可用长度；当前代码尚未另加产品限额。500汉字五段已真实成功，2000字测试尚未执行。后续真实发送必须重新取得具体目标、完整正文和次数授权。
 
-业务 WM_COPYDATA 的原生群固定文本实验已成功，独立接收端确认正确群中新增一条、发送者与正文正确。当前工作是维护已验证的 Go 实现，不再从历史报告重新开始生产者搜索或替代方案验证。
+业务 WM_COPYDATA 的原生群固定文本实验已成功，独立接收端确认正确群中新增一条、发送者与正文正确。生产发送继续维护已验证的 Go 实现，不从历史报告重新开始生产者搜索。
+
+**独立网络上线已验收**：2026-10-25，Linux Go 新节点完成真实单对端上线，用户在 Windows 原客户端确认 `NWT-Go-Linux` 在线；随后程序正常退出。原生网络模块尚未实现1004/3011业务发送，不替换现有IPC。依据见 `docs/research/reports/native-protocol/native-node-online-confirmation-20261025.md`；上线成功不延续真实连接或聊天发送授权。
 
 - 实现：`internal/ipc`非交互式Adapter，提供 `LoadConfig`、`NewAdapter`、`Preflight`、`SendGroup`、`SendUser`、`RecordObservation`；命令入口保留 `cmd/ipcexperiment`，仍只处理群发送参数、确认与观察，默认只读。
 - 客户端：正常授权身份登录的内网通 3.4.3055，Windows x86。
@@ -16,12 +18,13 @@
 
 ## 按任务读取
 
-1. **维护发送实现、判断下一步或准备真实验证**：先读 `docs/research/ipc/validated-route.md`，遵循唯一已验证路线及停止事项。
+1. **维护IPC发送或准备IPC真实验证**：先读 `docs/research/ipc/validated-route.md`，遵循已验证发送路线及停止事项。
 2. **修改载荷、编码、群/用户解析或返回值**：读 `docs/research/ipc/ipc-contract.md`，保留地址/Evidence依据，区分静态事实、运行事实和未知范围。
 3. **使用或重构模块**：读 `docs/tools/ipc.md`；复用 `internal/windowprobe`，保持每次调用最多一次Win32发送、不自动重试及相关测试。
 4. **核对成功结果**：读 `docs/research/reports/ipc-phase12/0001-original-method-confirmation.md`。历史阶段的“未调用”“尚不可实现”仅描述当时状态，不覆盖后续成功证据。
 5. **提取联系人ID或准备单聊**：使用 `docs/tools/contactid.md` 的只读工具，联系人来源仅为 `cache/db/nr` 的 `OrgStruct_*`，原样保留ID，结果人工核实后才配置发送。字段依据见 `docs/research/reports/user-id/user-id-report.md`，已验证codec见 `docs/research/reports/nr-codec/nr-codec-report.md`；已通过合成加密测试及授权真实副本只读验证，联系人原始名称为not_found；操作者另确认输入为本机名称后已从唯一身份表后缀取得本机ID，未改配置或发送，见联系人报告同目录 `readonly-validation.md`。不使用群成员表替代，不猜ID或解密参数。
-6. 只有追查具体证据时才读对应小文件，不一次加载全部大型证据包或快照。
+6. **维护原生网络上线或继续实现发送**：先读 `docs/tools/nwtnode.md`、`docs/research/reports/native-protocol/native-node-online-confirmation-20261025.md`；字段修改读同目录 `node-registration-contract.md`，传输修改读 `docs/tools/native-transport.md`。复用已验收的新身份/type4/1000/1018，不从“尚未上线”重新开始。
+7. 只有追查具体证据时才读对应小文件，不一次加载全部大型证据包或快照。
 
 ## 已验证路线
 
@@ -35,12 +38,12 @@
 
 ## 工作范围
 
-- 复用已成功实现；不继续验证IPMsg替代原生群、UI Automation发送、自造原生网络协议或调试器作为发送前提。
+- 生产发送复用已成功IPC，不用IPMsg或UI Automation替代原生群，也不把调试器作为发送前提。另行授权的原生网络实现按独立模块维护；默认运行合成/loopback测试，真实上线另须明确对端、身份和时长，聊天另须目标、完整正文与次数。
 - 不修改原始客户端，不注入、不提权、不绕过认证或消息过滤。
 - 日常发送与开发不读取进程内存、聊天历史或凭据。历史限定调试仅是授权诊断，不带入模块依赖。
 - 多窗口候选时拒绝发送，不按标题、面积、枚举顺序挑选；只有确认非主窗口并获得操作授权时才正常关闭它，再重新定位。
 - 已占用或unknown任务保留记录，不删除、改名、切换APPDATA或换标识自动重试。Adapter默认调用方有权向参数目标发送，不另设权限检查；开发期间操作真实客户端复验仍须另行获得具体目标、正文与次数的明确授权。
-- 真实群ID、客户端样本、私有构建与原始日志保持私有，不提交Git。`local/ipcexperiment/`继续受忽略，不因包迁移改变私有路径。
+- 真实群ID、客户端样本、私有构建与原始日志保持私有，不提交Git。`local/ipcexperiment/`继续受忽略；`local/nativeclient/`保存独立节点自己的身份、逐次上线及UI观察记录，同样受忽略。失败和unknown记录保留，不覆盖成成功。
 - 文档整理和保持行为的模块重构默认只测试、构建；测试使用合成数据和独立fixture，不向真实客户端发送。真实复验需要单独明确授权，已完成的04复验见路线文档。不自动commit/push。
 
 ## 验证

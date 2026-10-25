@@ -1,0 +1,2153 @@
+{
+  "description": "启动与退出采集的离线核对摘要；不含真实用户标识、资料或凭据；不是 REA Evidence。",
+  "startup": {
+    "source_commit": "c734328d92169d98d39039232ecf13873cdcf017",
+    "source_path": "docs/research/reports/native-net-capture/20261025-092254-startup/capture.pcapng",
+    "source_sha256": "f900059fac60382b019a5046e2aad270f1eca5c5b18c4b614fdc5aa25735b447",
+    "packet_count": 4207,
+    "time_origin_utc": "2026-10-25T01:23:47.236942+00:00",
+    "method": "local-byte-parser-and-Go-offline-codec-not-REA-Evidence",
+    "coverage": {
+      "native_enet_datagrams": 132,
+      "discovery_datagrams": 32,
+      "commands": {
+        "CONNECT": 6,
+        "VERIFY_CONNECT": 6,
+        "ACK": 72,
+        "PING": 18,
+        "SEND_RELIABLE": 30,
+        "SEND_FRAGMENT": 8,
+        "BANDWIDTH_LIMIT": 6,
+        "DISCONNECT": 4
+      },
+      "unparsed_ipv4_length_frames": [
+        21,
+        826,
+        977
+      ],
+      "other_ether_types_not_decoded": true,
+      "native_selected_parsing_errors": 0
+    },
+    "fragment_groups": [
+      {
+        "frames": [
+          95,
+          96
+        ],
+        "count": 2,
+        "total": 1485,
+        "complete": true
+      },
+      {
+        "frames": [
+          99,
+          100
+        ],
+        "count": 2,
+        "total": 1472,
+        "complete": true
+      },
+      {
+        "frames": [
+          113,
+          115
+        ],
+        "count": 2,
+        "total": 1485,
+        "complete": true
+      },
+      {
+        "frames": [
+          114,
+          116
+        ],
+        "count": 2,
+        "total": 1485,
+        "complete": true
+      }
+    ],
+    "application_frames": [
+      {
+        "frames": [
+          83
+        ],
+        "relative_seconds": 5.4732283,
+        "source": "P1",
+        "src_port": 9012,
+        "destination": "C0",
+        "dst_port": 9012,
+        "length": 304,
+        "sha256": "4074aff02081556f1725f8e0be320c61457a17a0495584aef2dc79ba31901330",
+        "channel": 0,
+        "format": "binary_node_control",
+        "type": 4,
+        "version": 1
+      },
+      {
+        "frames": [
+          86
+        ],
+        "relative_seconds": 5.4888183,
+        "source": "P2",
+        "src_port": 9012,
+        "destination": "C0",
+        "dst_port": 9012,
+        "length": 304,
+        "sha256": "eebe2e5ee49742da0fb5935751e7318043d3b950e09d07f6b5408a4cd11bb8ae",
+        "channel": 0,
+        "format": "binary_node_control",
+        "type": 4,
+        "version": 1
+      },
+      {
+        "frames": [
+          91
+        ],
+        "relative_seconds": 5.5350392,
+        "source": "C0",
+        "src_port": 55777,
+        "destination": "P2",
+        "dst_port": 63905,
+        "length": 304,
+        "sha256": "df5d5bc133b938a52d222b9e4cca7d61d7534b98af641ed37d561c80e6732677",
+        "channel": 0,
+        "format": "binary_node_control",
+        "type": 4,
+        "version": 1
+      },
+      {
+        "frames": [
+          92
+        ],
+        "relative_seconds": 5.5351764,
+        "source": "C0",
+        "src_port": 55777,
+        "destination": "P1",
+        "dst_port": 50457,
+        "length": 304,
+        "sha256": "df5d5bc133b938a52d222b9e4cca7d61d7534b98af641ed37d561c80e6732677",
+        "channel": 0,
+        "format": "binary_node_control",
+        "type": 4,
+        "version": 1
+      },
+      {
+        "frames": [
+          93
+        ],
+        "relative_seconds": 5.5352121,
+        "source": "C0",
+        "src_port": 55777,
+        "destination": "P1",
+        "dst_port": 50457,
+        "length": 304,
+        "sha256": "df5d5bc133b938a52d222b9e4cca7d61d7534b98af641ed37d561c80e6732677",
+        "channel": 0,
+        "format": "binary_node_control",
+        "type": 4,
+        "version": 1
+      },
+      {
+        "frames": [
+          94
+        ],
+        "relative_seconds": 5.5353105,
+        "source": "C0",
+        "src_port": 55777,
+        "destination": "P2",
+        "dst_port": 63905,
+        "length": 304,
+        "sha256": "df5d5bc133b938a52d222b9e4cca7d61d7534b98af641ed37d561c80e6732677",
+        "channel": 0,
+        "format": "binary_node_control",
+        "type": 4,
+        "version": 1
+      },
+      {
+        "frames": [
+          123
+        ],
+        "relative_seconds": 5.8379006,
+        "source": "C0",
+        "src_port": 9012,
+        "destination": "P1",
+        "dst_port": 9012,
+        "length": 105,
+        "sha256": "07f7a6384d3cccf75a2d19f53658e74b3c932ddcd54d3aa7469454ab9db914b0",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 1018,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 97,
+        "root": "X_READY",
+        "field_names": [
+          "PARAM",
+          "USER_ID",
+          "X_READY"
+        ]
+      },
+      {
+        "frames": [
+          124
+        ],
+        "relative_seconds": 5.8379512,
+        "source": "C0",
+        "src_port": 9012,
+        "destination": "P2",
+        "dst_port": 9012,
+        "length": 105,
+        "sha256": "07f7a6384d3cccf75a2d19f53658e74b3c932ddcd54d3aa7469454ab9db914b0",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 1018,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 97,
+        "root": "X_READY",
+        "field_names": [
+          "PARAM",
+          "USER_ID",
+          "X_READY"
+        ]
+      },
+      {
+        "frames": [
+          127
+        ],
+        "relative_seconds": 5.993566,
+        "source": "P2",
+        "src_port": 9012,
+        "destination": "C0",
+        "dst_port": 9012,
+        "length": 105,
+        "sha256": "faa0eaf83dcc8c4c55d9ad5ce00fbf059a0d07ad34b689e2335b630b2fa4136d",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 1018,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 97,
+        "root": "X_READY",
+        "field_names": [
+          "PARAM",
+          "USER_ID",
+          "X_READY"
+        ]
+      },
+      {
+        "frames": [
+          128
+        ],
+        "relative_seconds": 6.0249677,
+        "source": "P1",
+        "src_port": 9012,
+        "destination": "C0",
+        "dst_port": 9012,
+        "length": 105,
+        "sha256": "c75fdce979a5289596a2743c4a03725985d6d8d1787afefc81994703bb0b22ae",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 1018,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 97,
+        "root": "X_READY",
+        "field_names": [
+          "PARAM",
+          "USER_ID",
+          "X_READY"
+        ]
+      },
+      {
+        "frames": [
+          131
+        ],
+        "relative_seconds": 6.0946122,
+        "source": "P2",
+        "src_port": 9012,
+        "destination": "C0",
+        "dst_port": 9012,
+        "length": 113,
+        "sha256": "1ebb597cad9089437f38375fcfa31d4b888add9190f891f8b069d0e993366416",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 3004,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 105,
+        "root": "X_QGROUP_REQ_INFO",
+        "field_names": [
+          "QGROUP_ID",
+          "X_QGROUP_REQ_INFO"
+        ]
+      },
+      {
+        "frames": [
+          132
+        ],
+        "relative_seconds": 6.1362898,
+        "source": "P1",
+        "src_port": 9012,
+        "destination": "C0",
+        "dst_port": 9012,
+        "length": 113,
+        "sha256": "8ffc46e8e5e4489cd745d869f4360bb0d3d0b86a0af4472bfcf6869248c654c3",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 3004,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 105,
+        "root": "X_QGROUP_REQ_INFO",
+        "field_names": [
+          "QGROUP_ID",
+          "X_QGROUP_REQ_INFO"
+        ]
+      },
+      {
+        "frames": [
+          135
+        ],
+        "relative_seconds": 6.241898,
+        "source": "C0",
+        "src_port": 9012,
+        "destination": "P1",
+        "dst_port": 9012,
+        "length": 113,
+        "sha256": "8ffc46e8e5e4489cd745d869f4360bb0d3d0b86a0af4472bfcf6869248c654c3",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 3004,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 105,
+        "root": "X_QGROUP_REQ_INFO",
+        "field_names": [
+          "QGROUP_ID",
+          "X_QGROUP_REQ_INFO"
+        ]
+      },
+      {
+        "frames": [
+          136
+        ],
+        "relative_seconds": 6.2419442,
+        "source": "C0",
+        "src_port": 9012,
+        "destination": "P2",
+        "dst_port": 9012,
+        "length": 113,
+        "sha256": "1ebb597cad9089437f38375fcfa31d4b888add9190f891f8b069d0e993366416",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 3004,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 105,
+        "root": "X_QGROUP_REQ_INFO",
+        "field_names": [
+          "QGROUP_ID",
+          "X_QGROUP_REQ_INFO"
+        ]
+      },
+      {
+        "frames": [
+          139
+        ],
+        "relative_seconds": 6.3429335,
+        "source": "C0",
+        "src_port": 9012,
+        "destination": "P1",
+        "dst_port": 9012,
+        "length": 505,
+        "sha256": "a2f6e9accaa024ad63c1373fa23c71550d97157576b7a7cca79f77f246e8bc1c",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 3005,
+        "status": "non_xml_payload",
+        "exact_reencode": true,
+        "text_bytes": 497,
+        "root": "X_QGROUP_REQ_INFO_RSP",
+        "observed_tag_mismatch": {
+          "open": "QGROUP_INFO_VER",
+          "close": "GROUP_INFO_VER"
+        }
+      },
+      {
+        "frames": [
+          140
+        ],
+        "relative_seconds": 6.3429992,
+        "source": "C0",
+        "src_port": 9012,
+        "destination": "P2",
+        "dst_port": 9012,
+        "length": 506,
+        "sha256": "fe6dfb5cb41a0a4f0b2aaec49bb2e2e6fbd883a1974ca4d73593208af5f64a86",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 3005,
+        "status": "non_xml_payload",
+        "exact_reencode": true,
+        "text_bytes": 498,
+        "root": "X_QGROUP_REQ_INFO_RSP",
+        "observed_tag_mismatch": {
+          "open": "QGROUP_INFO_VER",
+          "close": "GROUP_INFO_VER"
+        }
+      },
+      {
+        "frames": [
+          144
+        ],
+        "relative_seconds": 6.4670865,
+        "source": "P1",
+        "src_port": 9012,
+        "destination": "C0",
+        "dst_port": 9012,
+        "length": 505,
+        "sha256": "a2f6e9accaa024ad63c1373fa23c71550d97157576b7a7cca79f77f246e8bc1c",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 3005,
+        "status": "non_xml_payload",
+        "exact_reencode": true,
+        "text_bytes": 497,
+        "root": "X_QGROUP_REQ_INFO_RSP",
+        "observed_tag_mismatch": {
+          "open": "QGROUP_INFO_VER",
+          "close": "GROUP_INFO_VER"
+        }
+      },
+      {
+        "frames": [
+          147
+        ],
+        "relative_seconds": 6.4987221,
+        "source": "P2",
+        "src_port": 9012,
+        "destination": "C0",
+        "dst_port": 9012,
+        "length": 506,
+        "sha256": "fe6dfb5cb41a0a4f0b2aaec49bb2e2e6fbd883a1974ca4d73593208af5f64a86",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 3005,
+        "status": "non_xml_payload",
+        "exact_reencode": true,
+        "text_bytes": 498,
+        "root": "X_QGROUP_REQ_INFO_RSP",
+        "observed_tag_mismatch": {
+          "open": "QGROUP_INFO_VER",
+          "close": "GROUP_INFO_VER"
+        }
+      },
+      {
+        "frames": [
+          156
+        ],
+        "relative_seconds": 7.8106692,
+        "source": "P2",
+        "src_port": 9012,
+        "destination": "C0",
+        "dst_port": 9012,
+        "length": 34,
+        "sha256": "6ac285a31b7c9ec66ad18d72867a56f80ccc877d1deeae30b3ff70955982098e",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 1016,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 26,
+        "root": "X_HEARTBEAT",
+        "field_names": [
+          "X_HEARTBEAT"
+        ]
+      },
+      {
+        "frames": [
+          169
+        ],
+        "relative_seconds": 10.2177989,
+        "source": "P1",
+        "src_port": 9012,
+        "destination": "C0",
+        "dst_port": 9012,
+        "length": 34,
+        "sha256": "6ac285a31b7c9ec66ad18d72867a56f80ccc877d1deeae30b3ff70955982098e",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 1016,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 26,
+        "root": "X_HEARTBEAT",
+        "field_names": [
+          "X_HEARTBEAT"
+        ]
+      },
+      {
+        "frames": [
+          177
+        ],
+        "relative_seconds": 10.3842106,
+        "source": "C0",
+        "src_port": 9012,
+        "destination": "P1",
+        "dst_port": 9012,
+        "length": 34,
+        "sha256": "6ac285a31b7c9ec66ad18d72867a56f80ccc877d1deeae30b3ff70955982098e",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 1016,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 26,
+        "root": "X_HEARTBEAT",
+        "field_names": [
+          "X_HEARTBEAT"
+        ]
+      },
+      {
+        "frames": [
+          178
+        ],
+        "relative_seconds": 10.3842407,
+        "source": "C0",
+        "src_port": 9012,
+        "destination": "P2",
+        "dst_port": 9012,
+        "length": 34,
+        "sha256": "6ac285a31b7c9ec66ad18d72867a56f80ccc877d1deeae30b3ff70955982098e",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 1016,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 26,
+        "root": "X_HEARTBEAT",
+        "field_names": [
+          "X_HEARTBEAT"
+        ]
+      },
+      {
+        "frames": [
+          617
+        ],
+        "relative_seconds": 67.8901432,
+        "source": "P2",
+        "src_port": 9012,
+        "destination": "C0",
+        "dst_port": 9012,
+        "length": 34,
+        "sha256": "6ac285a31b7c9ec66ad18d72867a56f80ccc877d1deeae30b3ff70955982098e",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 1016,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 26,
+        "root": "X_HEARTBEAT",
+        "field_names": [
+          "X_HEARTBEAT"
+        ]
+      },
+      {
+        "frames": [
+          628
+        ],
+        "relative_seconds": 70.2444741,
+        "source": "P1",
+        "src_port": 9012,
+        "destination": "C0",
+        "dst_port": 9012,
+        "length": 34,
+        "sha256": "6ac285a31b7c9ec66ad18d72867a56f80ccc877d1deeae30b3ff70955982098e",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 1016,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 26,
+        "root": "X_HEARTBEAT",
+        "field_names": [
+          "X_HEARTBEAT"
+        ]
+      },
+      {
+        "frames": [
+          629
+        ],
+        "relative_seconds": 70.3341892,
+        "source": "C0",
+        "src_port": 9012,
+        "destination": "P1",
+        "dst_port": 9012,
+        "length": 34,
+        "sha256": "6ac285a31b7c9ec66ad18d72867a56f80ccc877d1deeae30b3ff70955982098e",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 1016,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 26,
+        "root": "X_HEARTBEAT",
+        "field_names": [
+          "X_HEARTBEAT"
+        ]
+      },
+      {
+        "frames": [
+          630
+        ],
+        "relative_seconds": 70.3342294,
+        "source": "C0",
+        "src_port": 9012,
+        "destination": "P2",
+        "dst_port": 9012,
+        "length": 34,
+        "sha256": "6ac285a31b7c9ec66ad18d72867a56f80ccc877d1deeae30b3ff70955982098e",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 1016,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 26,
+        "root": "X_HEARTBEAT",
+        "field_names": [
+          "X_HEARTBEAT"
+        ]
+      },
+      {
+        "frames": [
+          2137
+        ],
+        "relative_seconds": 127.8677519,
+        "source": "P2",
+        "src_port": 9012,
+        "destination": "C0",
+        "dst_port": 9012,
+        "length": 34,
+        "sha256": "6ac285a31b7c9ec66ad18d72867a56f80ccc877d1deeae30b3ff70955982098e",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 1016,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 26,
+        "root": "X_HEARTBEAT",
+        "field_names": [
+          "X_HEARTBEAT"
+        ]
+      },
+      {
+        "frames": [
+          2220
+        ],
+        "relative_seconds": 130.2867656,
+        "source": "P1",
+        "src_port": 9012,
+        "destination": "C0",
+        "dst_port": 9012,
+        "length": 34,
+        "sha256": "6ac285a31b7c9ec66ad18d72867a56f80ccc877d1deeae30b3ff70955982098e",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 1016,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 26,
+        "root": "X_HEARTBEAT",
+        "field_names": [
+          "X_HEARTBEAT"
+        ]
+      },
+      {
+        "frames": [
+          2223
+        ],
+        "relative_seconds": 130.3540473,
+        "source": "C0",
+        "src_port": 9012,
+        "destination": "P1",
+        "dst_port": 9012,
+        "length": 34,
+        "sha256": "6ac285a31b7c9ec66ad18d72867a56f80ccc877d1deeae30b3ff70955982098e",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 1016,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 26,
+        "root": "X_HEARTBEAT",
+        "field_names": [
+          "X_HEARTBEAT"
+        ]
+      },
+      {
+        "frames": [
+          2224
+        ],
+        "relative_seconds": 130.3541198,
+        "source": "C0",
+        "src_port": 9012,
+        "destination": "P2",
+        "dst_port": 9012,
+        "length": 34,
+        "sha256": "6ac285a31b7c9ec66ad18d72867a56f80ccc877d1deeae30b3ff70955982098e",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 1016,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 26,
+        "root": "X_HEARTBEAT",
+        "field_names": [
+          "X_HEARTBEAT"
+        ]
+      },
+      {
+        "frames": [
+          95,
+          96
+        ],
+        "relative_seconds": 5.5842207,
+        "source": "P1",
+        "src_port": 9012,
+        "destination": "C0",
+        "dst_port": 9012,
+        "length": 1485,
+        "sha256": "8993c20fad41c42cb9e34ef590b27f6704f460d73264918ef18bd6a3fa6aa323",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 1000,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 1477,
+        "root": "X_HANDSHARK",
+        "field_names": [
+          "ACTIVE_SEND",
+          "APP",
+          "BUILD",
+          "COLOR_NAME",
+          "CORPORATION",
+          "CORP_ID",
+          "CORP_TIME",
+          "DECORATE_NAME",
+          "DEPARTMENT",
+          "EMAIL",
+          "FEATURE",
+          "FILE_SHARE",
+          "FILE_TRAN",
+          "FILE_TRAN_ENET_PORT",
+          "FILE_TRAN_ENET_REVERSE_PORT",
+          "FILE_TRAN_TCP_PORT",
+          "FILE_TRAN_TCP_REVERSE_PORT",
+          "FOLDER_TRAN",
+          "FOLDER_TRAN_ENET_PORT",
+          "FOLDER_TRAN_ENET_REVERSE_PORT",
+          "FOLDER_TRAN_TCP_PORT",
+          "FOLDER_TRAN_TCP_REVERSE_PORT",
+          "GROUP",
+          "HIDE_IP",
+          "HIDE_RECORD",
+          "INFO",
+          "LAN_UPDATE",
+          "LAN_UPDATE_HTTP_PORT",
+          "MAJOR",
+          "MINOR",
+          "MOBILE",
+          "MSG",
+          "NAME",
+          "NET",
+          "OFFLINE_FILE",
+          "OFFLINE_MSG",
+          "ONLINE_POPUP",
+          "POST",
+          "QGROUP",
+          "QGROUP_FILE",
+          "QGROUP_FOLDER",
+          "QGROUP_MSG",
+          "REMOTE_ASSISTANCE",
+          "SEX",
+          "SIGN",
+          "SORT_NAME",
+          "STATUS",
+          "SYS_FACE",
+          "TEL",
+          "USER_FACE",
+          "X_HANDSHARK"
+        ],
+        "version": {
+          "MAJOR": "3",
+          "MINOR": "4",
+          "BUILD": "3055",
+          "APP": "1"
+        },
+        "net_port_values": {
+          "FILE_TRAN_TCP_PORT": 13603,
+          "FILE_TRAN_ENET_PORT": 0,
+          "FOLDER_TRAN_TCP_PORT": 13859,
+          "FOLDER_TRAN_ENET_PORT": 0,
+          "FILE_TRAN_TCP_REVERSE_PORT": 22000,
+          "FILE_TRAN_ENET_REVERSE_PORT": 0,
+          "FOLDER_TRAN_TCP_REVERSE_PORT": 22256,
+          "FOLDER_TRAN_ENET_REVERSE_PORT": 0,
+          "LAN_UPDATE_HTTP_PORT": 22512
+        }
+      },
+      {
+        "frames": [
+          99,
+          100
+        ],
+        "relative_seconds": 5.5898409,
+        "source": "P2",
+        "src_port": 9012,
+        "destination": "C0",
+        "dst_port": 9012,
+        "length": 1472,
+        "sha256": "dfcab7aed176fa039d345ef44ba70508283aee33b22550d88472cb5538e4bb01",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 1000,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 1464,
+        "root": "X_HANDSHARK",
+        "field_names": [
+          "ACTIVE_SEND",
+          "APP",
+          "BUILD",
+          "COLOR_NAME",
+          "CORPORATION",
+          "CORP_ID",
+          "CORP_TIME",
+          "DECORATE_NAME",
+          "DEPARTMENT",
+          "EMAIL",
+          "FEATURE",
+          "FILE_SHARE",
+          "FILE_TRAN",
+          "FILE_TRAN_ENET_PORT",
+          "FILE_TRAN_ENET_REVERSE_PORT",
+          "FILE_TRAN_TCP_PORT",
+          "FILE_TRAN_TCP_REVERSE_PORT",
+          "FOLDER_TRAN",
+          "FOLDER_TRAN_ENET_PORT",
+          "FOLDER_TRAN_ENET_REVERSE_PORT",
+          "FOLDER_TRAN_TCP_PORT",
+          "FOLDER_TRAN_TCP_REVERSE_PORT",
+          "GROUP",
+          "HIDE_IP",
+          "HIDE_RECORD",
+          "INFO",
+          "LAN_UPDATE",
+          "LAN_UPDATE_HTTP_PORT",
+          "MAJOR",
+          "MINOR",
+          "MOBILE",
+          "MSG",
+          "NAME",
+          "NET",
+          "OFFLINE_FILE",
+          "OFFLINE_MSG",
+          "ONLINE_POPUP",
+          "POST",
+          "QGROUP",
+          "QGROUP_FILE",
+          "QGROUP_FOLDER",
+          "QGROUP_MSG",
+          "REMOTE_ASSISTANCE",
+          "SEX",
+          "SIGN",
+          "SORT_NAME",
+          "STATUS",
+          "SYS_FACE",
+          "TEL",
+          "USER_FACE",
+          "X_HANDSHARK"
+        ],
+        "version": {
+          "MAJOR": "3",
+          "MINOR": "4",
+          "BUILD": "3055",
+          "APP": "1"
+        },
+        "net_port_values": {
+          "FILE_TRAN_TCP_PORT": 13603,
+          "FILE_TRAN_ENET_PORT": 0,
+          "FOLDER_TRAN_TCP_PORT": 13859,
+          "FOLDER_TRAN_ENET_PORT": 0,
+          "FILE_TRAN_TCP_REVERSE_PORT": 58103,
+          "FILE_TRAN_ENET_REVERSE_PORT": 0,
+          "FOLDER_TRAN_TCP_REVERSE_PORT": 58359,
+          "FOLDER_TRAN_ENET_REVERSE_PORT": 0,
+          "LAN_UPDATE_HTTP_PORT": 58615
+        }
+      },
+      {
+        "frames": [
+          113,
+          115
+        ],
+        "relative_seconds": 5.7369113,
+        "source": "C0",
+        "src_port": 9012,
+        "destination": "P1",
+        "dst_port": 9012,
+        "length": 1485,
+        "sha256": "2bcbfd249330289ff85f5925d8ae8372c7e7b53bc655ba7638e7403a8ab9bc6d",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 1000,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 1477,
+        "root": "X_HANDSHARK",
+        "field_names": [
+          "ACTIVE_SEND",
+          "APP",
+          "BUILD",
+          "COLOR_NAME",
+          "CORPORATION",
+          "CORP_ID",
+          "CORP_TIME",
+          "DECORATE_NAME",
+          "DEPARTMENT",
+          "EMAIL",
+          "FEATURE",
+          "FILE_SHARE",
+          "FILE_TRAN",
+          "FILE_TRAN_ENET_PORT",
+          "FILE_TRAN_ENET_REVERSE_PORT",
+          "FILE_TRAN_TCP_PORT",
+          "FILE_TRAN_TCP_REVERSE_PORT",
+          "FOLDER_TRAN",
+          "FOLDER_TRAN_ENET_PORT",
+          "FOLDER_TRAN_ENET_REVERSE_PORT",
+          "FOLDER_TRAN_TCP_PORT",
+          "FOLDER_TRAN_TCP_REVERSE_PORT",
+          "GROUP",
+          "HIDE_IP",
+          "HIDE_RECORD",
+          "INFO",
+          "LAN_UPDATE",
+          "LAN_UPDATE_HTTP_PORT",
+          "MAJOR",
+          "MINOR",
+          "MOBILE",
+          "MSG",
+          "NAME",
+          "NET",
+          "OFFLINE_FILE",
+          "OFFLINE_MSG",
+          "ONLINE_POPUP",
+          "POST",
+          "QGROUP",
+          "QGROUP_FILE",
+          "QGROUP_FOLDER",
+          "QGROUP_MSG",
+          "REMOTE_ASSISTANCE",
+          "SEX",
+          "SIGN",
+          "SORT_NAME",
+          "STATUS",
+          "SYS_FACE",
+          "TEL",
+          "USER_FACE",
+          "X_HANDSHARK"
+        ],
+        "version": {
+          "MAJOR": "3",
+          "MINOR": "4",
+          "BUILD": "3055",
+          "APP": "1"
+        },
+        "net_port_values": {
+          "FILE_TRAN_TCP_PORT": 13603,
+          "FILE_TRAN_ENET_PORT": 0,
+          "FOLDER_TRAN_TCP_PORT": 13859,
+          "FOLDER_TRAN_ENET_PORT": 0,
+          "FILE_TRAN_TCP_REVERSE_PORT": 34539,
+          "FILE_TRAN_ENET_REVERSE_PORT": 0,
+          "FOLDER_TRAN_TCP_REVERSE_PORT": 34795,
+          "FOLDER_TRAN_ENET_REVERSE_PORT": 0,
+          "LAN_UPDATE_HTTP_PORT": 35051
+        }
+      },
+      {
+        "frames": [
+          114,
+          116
+        ],
+        "relative_seconds": 5.736978,
+        "source": "C0",
+        "src_port": 9012,
+        "destination": "P2",
+        "dst_port": 9012,
+        "length": 1485,
+        "sha256": "2bcbfd249330289ff85f5925d8ae8372c7e7b53bc655ba7638e7403a8ab9bc6d",
+        "channel": 0,
+        "format": "xtea_application",
+        "command": 1000,
+        "status": "decoded_xml",
+        "exact_reencode": true,
+        "text_bytes": 1477,
+        "root": "X_HANDSHARK",
+        "field_names": [
+          "ACTIVE_SEND",
+          "APP",
+          "BUILD",
+          "COLOR_NAME",
+          "CORPORATION",
+          "CORP_ID",
+          "CORP_TIME",
+          "DECORATE_NAME",
+          "DEPARTMENT",
+          "EMAIL",
+          "FEATURE",
+          "FILE_SHARE",
+          "FILE_TRAN",
+          "FILE_TRAN_ENET_PORT",
+          "FILE_TRAN_ENET_REVERSE_PORT",
+          "FILE_TRAN_TCP_PORT",
+          "FILE_TRAN_TCP_REVERSE_PORT",
+          "FOLDER_TRAN",
+          "FOLDER_TRAN_ENET_PORT",
+          "FOLDER_TRAN_ENET_REVERSE_PORT",
+          "FOLDER_TRAN_TCP_PORT",
+          "FOLDER_TRAN_TCP_REVERSE_PORT",
+          "GROUP",
+          "HIDE_IP",
+          "HIDE_RECORD",
+          "INFO",
+          "LAN_UPDATE",
+          "LAN_UPDATE_HTTP_PORT",
+          "MAJOR",
+          "MINOR",
+          "MOBILE",
+          "MSG",
+          "NAME",
+          "NET",
+          "OFFLINE_FILE",
+          "OFFLINE_MSG",
+          "ONLINE_POPUP",
+          "POST",
+          "QGROUP",
+          "QGROUP_FILE",
+          "QGROUP_FOLDER",
+          "QGROUP_MSG",
+          "REMOTE_ASSISTANCE",
+          "SEX",
+          "SIGN",
+          "SORT_NAME",
+          "STATUS",
+          "SYS_FACE",
+          "TEL",
+          "USER_FACE",
+          "X_HANDSHARK"
+        ],
+        "version": {
+          "MAJOR": "3",
+          "MINOR": "4",
+          "BUILD": "3055",
+          "APP": "1"
+        },
+        "net_port_values": {
+          "FILE_TRAN_TCP_PORT": 13603,
+          "FILE_TRAN_ENET_PORT": 0,
+          "FOLDER_TRAN_TCP_PORT": 13859,
+          "FOLDER_TRAN_ENET_PORT": 0,
+          "FILE_TRAN_TCP_REVERSE_PORT": 34539,
+          "FILE_TRAN_ENET_REVERSE_PORT": 0,
+          "FOLDER_TRAN_TCP_REVERSE_PORT": 34795,
+          "FOLDER_TRAN_ENET_REVERSE_PORT": 0,
+          "LAN_UPDATE_HTTP_PORT": 35051
+        }
+      }
+    ],
+    "discovery": [
+      {
+        "frames": [
+          52
+        ],
+        "relative_seconds": 5.23105,
+        "source": "C0",
+        "src_port": 9011,
+        "destination": "subnet_broadcast",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          1,
+          1
+        ]
+      },
+      {
+        "frames": [
+          53
+        ],
+        "relative_seconds": 5.2311459,
+        "source": "C0",
+        "src_port": 9011,
+        "destination": "limited_broadcast",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          1,
+          1
+        ]
+      },
+      {
+        "frames": [
+          54
+        ],
+        "relative_seconds": 5.2522543,
+        "source": "P1",
+        "src_port": 9011,
+        "destination": "C0",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          2,
+          1
+        ]
+      },
+      {
+        "frames": [
+          55
+        ],
+        "relative_seconds": 5.2523459,
+        "source": "P1",
+        "src_port": 9011,
+        "destination": "C0",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          2,
+          1
+        ]
+      },
+      {
+        "frames": [
+          57
+        ],
+        "relative_seconds": 5.2870411,
+        "source": "P2",
+        "src_port": 9011,
+        "destination": "C0",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          2,
+          1
+        ]
+      },
+      {
+        "frames": [
+          58
+        ],
+        "relative_seconds": 5.287042,
+        "source": "P2",
+        "src_port": 9011,
+        "destination": "C0",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          2,
+          1
+        ]
+      },
+      {
+        "frames": [
+          175
+        ],
+        "relative_seconds": 10.3838616,
+        "source": "C0",
+        "src_port": 9011,
+        "destination": "subnet_broadcast",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          1,
+          1
+        ]
+      },
+      {
+        "frames": [
+          176
+        ],
+        "relative_seconds": 10.3840238,
+        "source": "C0",
+        "src_port": 9011,
+        "destination": "limited_broadcast",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          1,
+          1
+        ]
+      },
+      {
+        "frames": [
+          224
+        ],
+        "relative_seconds": 10.4362436,
+        "source": "P2",
+        "src_port": 9011,
+        "destination": "C0",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          2,
+          1
+        ]
+      },
+      {
+        "frames": [
+          225
+        ],
+        "relative_seconds": 10.4362443,
+        "source": "P2",
+        "src_port": 9011,
+        "destination": "C0",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          2,
+          1
+        ]
+      },
+      {
+        "frames": [
+          227
+        ],
+        "relative_seconds": 10.4374706,
+        "source": "P1",
+        "src_port": 9011,
+        "destination": "C0",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          2,
+          1
+        ]
+      },
+      {
+        "frames": [
+          228
+        ],
+        "relative_seconds": 10.4374711,
+        "source": "P1",
+        "src_port": 9011,
+        "destination": "C0",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          2,
+          1
+        ]
+      },
+      {
+        "frames": [
+          287
+        ],
+        "relative_seconds": 15.4339374,
+        "source": "C0",
+        "src_port": 9011,
+        "destination": "subnet_broadcast",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          1,
+          1
+        ]
+      },
+      {
+        "frames": [
+          288
+        ],
+        "relative_seconds": 15.4340312,
+        "source": "C0",
+        "src_port": 9011,
+        "destination": "limited_broadcast",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          1,
+          1
+        ]
+      },
+      {
+        "frames": [
+          289
+        ],
+        "relative_seconds": 15.4847258,
+        "source": "P2",
+        "src_port": 9011,
+        "destination": "C0",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          2,
+          1
+        ]
+      },
+      {
+        "frames": [
+          290
+        ],
+        "relative_seconds": 15.4847264,
+        "source": "P2",
+        "src_port": 9011,
+        "destination": "C0",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          2,
+          1
+        ]
+      },
+      {
+        "frames": [
+          291
+        ],
+        "relative_seconds": 15.5138754,
+        "source": "P1",
+        "src_port": 9011,
+        "destination": "C0",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          2,
+          1
+        ]
+      },
+      {
+        "frames": [
+          292
+        ],
+        "relative_seconds": 15.5138762,
+        "source": "P1",
+        "src_port": 9011,
+        "destination": "C0",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          2,
+          1
+        ]
+      },
+      {
+        "frames": [
+          309
+        ],
+        "relative_seconds": 20.4120031,
+        "source": "C0",
+        "src_port": 9011,
+        "destination": "subnet_broadcast",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          1,
+          1
+        ]
+      },
+      {
+        "frames": [
+          310
+        ],
+        "relative_seconds": 20.4120654,
+        "source": "C0",
+        "src_port": 9011,
+        "destination": "limited_broadcast",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          1,
+          1
+        ]
+      },
+      {
+        "frames": [
+          311
+        ],
+        "relative_seconds": 20.4321236,
+        "source": "P2",
+        "src_port": 9011,
+        "destination": "C0",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          2,
+          1
+        ]
+      },
+      {
+        "frames": [
+          312
+        ],
+        "relative_seconds": 20.4321243,
+        "source": "P2",
+        "src_port": 9011,
+        "destination": "C0",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          2,
+          1
+        ]
+      },
+      {
+        "frames": [
+          314
+        ],
+        "relative_seconds": 20.4853677,
+        "source": "P1",
+        "src_port": 9011,
+        "destination": "C0",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          2,
+          1
+        ]
+      },
+      {
+        "frames": [
+          315
+        ],
+        "relative_seconds": 20.4853683,
+        "source": "P1",
+        "src_port": 9011,
+        "destination": "C0",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          2,
+          1
+        ]
+      },
+      {
+        "frames": [
+          615
+        ],
+        "relative_seconds": 67.8896859,
+        "source": "P2",
+        "src_port": 9011,
+        "destination": "subnet_broadcast",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          1,
+          1
+        ]
+      },
+      {
+        "frames": [
+          616
+        ],
+        "relative_seconds": 67.8899122,
+        "source": "P2",
+        "src_port": 9011,
+        "destination": "limited_broadcast",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          1,
+          1
+        ]
+      },
+      {
+        "frames": [
+          618
+        ],
+        "relative_seconds": 67.9102811,
+        "source": "C0",
+        "src_port": 9011,
+        "destination": "P2",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          2,
+          1
+        ]
+      },
+      {
+        "frames": [
+          619
+        ],
+        "relative_seconds": 67.9103347,
+        "source": "C0",
+        "src_port": 9011,
+        "destination": "P2",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          2,
+          1
+        ]
+      },
+      {
+        "frames": [
+          777
+        ],
+        "relative_seconds": 85.2639587,
+        "source": "P1",
+        "src_port": 9011,
+        "destination": "subnet_broadcast",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          1,
+          1
+        ]
+      },
+      {
+        "frames": [
+          778
+        ],
+        "relative_seconds": 85.2641502,
+        "source": "P1",
+        "src_port": 9011,
+        "destination": "limited_broadcast",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          1,
+          1
+        ]
+      },
+      {
+        "frames": [
+          779
+        ],
+        "relative_seconds": 85.281875,
+        "source": "C0",
+        "src_port": 9011,
+        "destination": "P1",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          2,
+          1
+        ]
+      },
+      {
+        "frames": [
+          780
+        ],
+        "relative_seconds": 85.2819355,
+        "source": "C0",
+        "src_port": 9011,
+        "destination": "P1",
+        "dst_port": 9011,
+        "payload_length": 304,
+        "udp_length": 312,
+        "frame_length": 346,
+        "header": [
+          304,
+          2,
+          1
+        ]
+      }
+    ],
+    "http": {
+      "request_frame": 603,
+      "response_frame": 607,
+      "method": "POST",
+      "host": "report.51nwt.com",
+      "path": "/api/report.php",
+      "request_tcp_payload_length": 945,
+      "request_form_body_length": 805,
+      "form_fields": [
+        "json"
+      ],
+      "json_field_names": [
+        "app",
+        "build num",
+        "corp id",
+        "corp time",
+        "ip",
+        "mac",
+        "major num",
+        "minor num",
+        "name",
+        "sex",
+        "type",
+        "user id",
+        "user list"
+      ],
+      "response_status": 404,
+      "response_tcp_payload_length": 294,
+      "response_body_length": 146
+    }
+  },
+  "exit": {
+    "source_commit": "c734328d92169d98d39039232ecf13873cdcf017",
+    "source_path": "docs/research/reports/native-net-capture/20261025-093200-exit/capture.pcapng",
+    "source_sha256": "c6b7631b3d5c6e82e03f9baea2aeebcf3e2beb06e4de5e1478fdf238f71cbb4c",
+    "packet_count": 1159,
+    "time_origin_utc": "2026-10-25T01:32:16.411906+00:00",
+    "duration_seconds": 119.4185831,
+    "enet_command_counts": {
+      "PING": 1,
+      "ACK": 5,
+      "SEND_RELIABLE": 2,
+      "DISCONNECT": 2
+    },
+    "events": [
+      {
+        "frame": 133,
+        "relative_seconds": 8.9597086,
+        "original_length": 60,
+        "ip_length": 36,
+        "payload_length": 8,
+        "src_port": 9012,
+        "dst_port": 9012,
+        "header_length": 4,
+        "consumed_udp_bytes": 8,
+        "source": "P2",
+        "destination": "C0",
+        "commands": [
+          {
+            "offset_in_udp_payload": 4,
+            "raw_command_hex": "85",
+            "command": 5,
+            "name": "PING",
+            "channel": 255,
+            "reliable_sequence": 12,
+            "ack_requested": true,
+            "unsequenced_flag": false,
+            "command_header_length": 4,
+            "wire_length": 4,
+            "matching_acks": [
+              {
+                "frame": 134,
+                "delay_ms": 34.909
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "frame": 134,
+        "relative_seconds": 8.9946176,
+        "original_length": 52,
+        "ip_length": 38,
+        "payload_length": 10,
+        "src_port": 9012,
+        "dst_port": 9012,
+        "header_length": 2,
+        "consumed_udp_bytes": 10,
+        "source": "C0",
+        "destination": "P2",
+        "commands": [
+          {
+            "offset_in_udp_payload": 2,
+            "raw_command_hex": "01",
+            "command": 1,
+            "name": "ACK",
+            "channel": 255,
+            "reliable_sequence": 12,
+            "ack_requested": false,
+            "unsequenced_flag": false,
+            "ack_sequence": 12,
+            "received_sent_time": 54350,
+            "command_header_length": 8,
+            "wire_length": 8
+          }
+        ]
+      },
+      {
+        "frame": 151,
+        "relative_seconds": 10.6111539,
+        "original_length": 81,
+        "ip_length": 67,
+        "payload_length": 39,
+        "src_port": 9012,
+        "dst_port": 9012,
+        "header_length": 4,
+        "consumed_udp_bytes": 39,
+        "source": "C0",
+        "destination": "P1",
+        "commands": [
+          {
+            "offset_in_udp_payload": 4,
+            "raw_command_hex": "86",
+            "command": 6,
+            "name": "SEND_RELIABLE",
+            "channel": 0,
+            "reliable_sequence": 15,
+            "ack_requested": true,
+            "unsequenced_flag": false,
+            "command_header_length": 6,
+            "data_length": 29,
+            "wire_length": 35,
+            "applications": [
+              {
+                "offset_in_enet_data": 0,
+                "length_field": 29,
+                "command_field": 1017,
+                "header_hex": "0000001d000003f9",
+                "encrypted_full_blocks": 2,
+                "unchanged_tail_length": 5,
+                "xml_root": "X_QUIT",
+                "xml_element_names": [
+                  "X_QUIT"
+                ],
+                "xml_attribute_names": [
+                  "docver"
+                ],
+                "go_and_python_decrypt_match": true,
+                "non_sensitive_exit_xml": "<X_QUIT docver=\"1\" />",
+                "docver": "1",
+                "unchanged_tail_hex": "3122202f3e",
+                "wire_sha256": "e3d9ffad610091bbce78c3342a6962d949ee1eaf2771e53dfc7027915afb3bae"
+              }
+            ],
+            "matching_acks": [
+              {
+                "frame": 153,
+                "delay_ms": 51.2456
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "frame": 152,
+        "relative_seconds": 10.6111902,
+        "original_length": 81,
+        "ip_length": 67,
+        "payload_length": 39,
+        "src_port": 9012,
+        "dst_port": 9012,
+        "header_length": 4,
+        "consumed_udp_bytes": 39,
+        "source": "C0",
+        "destination": "P2",
+        "commands": [
+          {
+            "offset_in_udp_payload": 4,
+            "raw_command_hex": "86",
+            "command": 6,
+            "name": "SEND_RELIABLE",
+            "channel": 0,
+            "reliable_sequence": 15,
+            "ack_requested": true,
+            "unsequenced_flag": false,
+            "command_header_length": 6,
+            "data_length": 29,
+            "wire_length": 35,
+            "applications": [
+              {
+                "offset_in_enet_data": 0,
+                "length_field": 29,
+                "command_field": 1017,
+                "header_hex": "0000001d000003f9",
+                "encrypted_full_blocks": 2,
+                "unchanged_tail_length": 5,
+                "xml_root": "X_QUIT",
+                "xml_element_names": [
+                  "X_QUIT"
+                ],
+                "xml_attribute_names": [
+                  "docver"
+                ],
+                "go_and_python_decrypt_match": true,
+                "non_sensitive_exit_xml": "<X_QUIT docver=\"1\" />",
+                "docver": "1",
+                "unchanged_tail_hex": "3122202f3e",
+                "wire_sha256": "e3d9ffad610091bbce78c3342a6962d949ee1eaf2771e53dfc7027915afb3bae"
+              }
+            ],
+            "matching_acks": [
+              {
+                "frame": 154,
+                "delay_ms": 65.3338
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "frame": 153,
+        "relative_seconds": 10.6623995,
+        "original_length": 60,
+        "ip_length": 38,
+        "payload_length": 10,
+        "src_port": 9012,
+        "dst_port": 9012,
+        "header_length": 2,
+        "consumed_udp_bytes": 10,
+        "source": "P1",
+        "destination": "C0",
+        "commands": [
+          {
+            "offset_in_udp_payload": 2,
+            "raw_command_hex": "01",
+            "command": 1,
+            "name": "ACK",
+            "channel": 0,
+            "reliable_sequence": 15,
+            "ack_requested": false,
+            "unsequenced_flag": false,
+            "ack_sequence": 15,
+            "received_sent_time": 17148,
+            "command_header_length": 8,
+            "wire_length": 8
+          }
+        ]
+      },
+      {
+        "frame": 154,
+        "relative_seconds": 10.676524,
+        "original_length": 60,
+        "ip_length": 38,
+        "payload_length": 10,
+        "src_port": 9012,
+        "dst_port": 9012,
+        "header_length": 2,
+        "consumed_udp_bytes": 10,
+        "source": "P2",
+        "destination": "C0",
+        "commands": [
+          {
+            "offset_in_udp_payload": 2,
+            "raw_command_hex": "01",
+            "command": 1,
+            "name": "ACK",
+            "channel": 0,
+            "reliable_sequence": 15,
+            "ack_requested": false,
+            "unsequenced_flag": false,
+            "ack_sequence": 15,
+            "received_sent_time": 17148,
+            "command_header_length": 8,
+            "wire_length": 8
+          }
+        ]
+      },
+      {
+        "frame": 155,
+        "relative_seconds": 10.7115864,
+        "original_length": 54,
+        "ip_length": 40,
+        "payload_length": 12,
+        "src_port": 9012,
+        "dst_port": 9012,
+        "header_length": 4,
+        "consumed_udp_bytes": 12,
+        "source": "C0",
+        "destination": "P1",
+        "commands": [
+          {
+            "offset_in_udp_payload": 4,
+            "raw_command_hex": "84",
+            "command": 4,
+            "name": "DISCONNECT",
+            "channel": 255,
+            "reliable_sequence": 11,
+            "ack_requested": true,
+            "unsequenced_flag": false,
+            "disconnect_data": 0,
+            "disconnect_data_hex": "00000000",
+            "command_header_length": 8,
+            "wire_length": 8,
+            "matching_acks": [
+              {
+                "frame": 157,
+                "delay_ms": 60.968
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "frame": 156,
+        "relative_seconds": 10.7116539,
+        "original_length": 54,
+        "ip_length": 40,
+        "payload_length": 12,
+        "src_port": 9012,
+        "dst_port": 9012,
+        "header_length": 4,
+        "consumed_udp_bytes": 12,
+        "source": "C0",
+        "destination": "P2",
+        "commands": [
+          {
+            "offset_in_udp_payload": 4,
+            "raw_command_hex": "84",
+            "command": 4,
+            "name": "DISCONNECT",
+            "channel": 255,
+            "reliable_sequence": 11,
+            "ack_requested": true,
+            "unsequenced_flag": false,
+            "disconnect_data": 0,
+            "disconnect_data_hex": "00000000",
+            "command_header_length": 8,
+            "wire_length": 8,
+            "matching_acks": [
+              {
+                "frame": 158,
+                "delay_ms": 65.9017
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "frame": 157,
+        "relative_seconds": 10.7725544,
+        "original_length": 60,
+        "ip_length": 38,
+        "payload_length": 10,
+        "src_port": 9012,
+        "dst_port": 9012,
+        "header_length": 2,
+        "consumed_udp_bytes": 10,
+        "source": "P1",
+        "destination": "C0",
+        "commands": [
+          {
+            "offset_in_udp_payload": 2,
+            "raw_command_hex": "01",
+            "command": 1,
+            "name": "ACK",
+            "channel": 255,
+            "reliable_sequence": 11,
+            "ack_requested": false,
+            "unsequenced_flag": false,
+            "ack_sequence": 11,
+            "received_sent_time": 17249,
+            "command_header_length": 8,
+            "wire_length": 8
+          }
+        ]
+      },
+      {
+        "frame": 158,
+        "relative_seconds": 10.7775556,
+        "original_length": 60,
+        "ip_length": 38,
+        "payload_length": 10,
+        "src_port": 9012,
+        "dst_port": 9012,
+        "header_length": 2,
+        "consumed_udp_bytes": 10,
+        "source": "P2",
+        "destination": "C0",
+        "commands": [
+          {
+            "offset_in_udp_payload": 2,
+            "raw_command_hex": "01",
+            "command": 1,
+            "name": "ACK",
+            "channel": 255,
+            "reliable_sequence": 11,
+            "ack_requested": false,
+            "unsequenced_flag": false,
+            "ack_sequence": 11,
+            "received_sent_time": 17249,
+            "command_header_length": 8,
+            "wire_length": 8
+          }
+        ]
+      }
+    ],
+    "target_tcp": [
+      {
+        "frame": 254,
+        "relative_seconds": 12.3427917,
+        "flags_hex": "0x11",
+        "payload_length": 0,
+        "src_port": 60298,
+        "dst_port": 80,
+        "source": "C0",
+        "destination": "report_server"
+      },
+      {
+        "frame": 255,
+        "relative_seconds": 12.3429798,
+        "flags_hex": "0x10",
+        "payload_length": 0,
+        "src_port": 80,
+        "dst_port": 60298,
+        "source": "report_server",
+        "destination": "C0"
+      }
+    ],
+    "port_activity": {
+      "after_first_exit_application": {
+        "anchor_relative_seconds": 10.6111539,
+        "remaining_capture_seconds": 108.8074292,
+        "all_frames_after": 1008,
+        "ipv4_9011_packets": 0,
+        "ipv4_9012_packets": 7,
+        "ipv4_9011_outbound": 0,
+        "ipv4_9012_outbound": 3
+      },
+      "after_last_exit_application": {
+        "anchor_relative_seconds": 10.6111902,
+        "remaining_capture_seconds": 108.8073929,
+        "all_frames_after": 1007,
+        "ipv4_9011_packets": 0,
+        "ipv4_9012_packets": 6,
+        "ipv4_9011_outbound": 0,
+        "ipv4_9012_outbound": 2
+      },
+      "after_last_disconnect": {
+        "anchor_relative_seconds": 10.7116539,
+        "remaining_capture_seconds": 108.7069292,
+        "all_frames_after": 1003,
+        "ipv4_9011_packets": 0,
+        "ipv4_9012_packets": 2,
+        "ipv4_9011_outbound": 0,
+        "ipv4_9012_outbound": 0
+      },
+      "after_last_enet_ack": {
+        "anchor_relative_seconds": 10.7775556,
+        "remaining_capture_seconds": 108.6410275,
+        "all_frames_after": 1001,
+        "ipv4_9011_packets": 0,
+        "ipv4_9012_packets": 0,
+        "ipv4_9011_outbound": 0,
+        "ipv4_9012_outbound": 0
+      },
+      "capture_9011_total": 0,
+      "capture_9012_total": 10,
+      "ipv6_9011_9012_total": 0
+    },
+    "coverage": {
+      "all_epb_packets_counted": 1159,
+      "enet_datagrams_fully_consumed": 10,
+      "enet_compressed_datagrams": 0,
+      "enet_fragment_commands_observed": 0,
+      "application_frames_decrypted_by_two_implementations": 2,
+      "valid_ipv4_tcp_packets": 620,
+      "invalid_ipv4_packets_separately_preserved": 4,
+      "ipv4_fragments_not_reassembled": 0,
+      "ipv6_extension_protocols_observed": {
+        "58": 45,
+        "17": 264
+      }
+    },
+    "invalid_ipv4_length_frames": [
+      46,
+      75,
+      706,
+      730
+    ]
+  },
+  "startup_observations": {
+    "discovery_payload_bytes": 304,
+    "discovery_udp_length_bytes": 312,
+    "binary_type4_equals_same_source_discovery_except_type_byte": true,
+    "ready_user_id_matches_source_discovery_offset": 30,
+    "ready_param": 0,
+    "raw_xml_port_requires_uint16_byte_swap_in_this_sample": true,
+    "group_info_tag_mismatch": {
+      "open": "QGROUP_INFO_VER",
+      "close": "GROUP_INFO_VER",
+      "sample_open_file_offset": "0x5e9944",
+      "sample_close_file_offset": "0x5e996e"
+    }
+  }
+}

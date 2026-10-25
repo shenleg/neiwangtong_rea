@@ -1,0 +1,241 @@
+{
+  "description": "内网通 3.4.3055 原生网络协议静态证据；无真实抓包或客户端执行",
+  "sample_sha256": "e7caef3fe744f9fe6ba90dd1d53b7e64241cb54020a8bf37be5e756e2fe881b1",
+  "provider": "Ghidra 12.1.4 / REA 6.7.0",
+  "analysis_profile_digest": "7810ea9437da59780820ec6fedb47ce47390841a95d527ddb6c3b3700fe180cb",
+  "source_bundle_path": "/tmp/nwt-protocol-static-UCYbaNdR/static-final-evidence.json",
+  "source_bundle_sha256": "5942e0a527da96237b0851d5ee14279f90ba9690670d68ce8ad277c594841272",
+  "source_bundle_records": 287,
+  "snapshot_path": "/tmp/nwt-protocol-static-UCYbaNdR/native-network.snapshot.json",
+  "snapshot_sha256": "8bb4fec932a667f30b0daa9dab746e44cbeb9a6e16c2af442dc0ccabd65a7412",
+  "archive": {
+    "path": "static-evidence.json",
+    "sha256": "6ad0d0dbd2208cfa9fd55dfc2f0b2874f41afb4f6a14a44764568209b478440f",
+    "bytes": 792921,
+    "records": 48
+  },
+  "receipts": [
+    {
+      "response": "67b3b0-pseudo.json",
+      "evidence_id": "ev_c23cb630f290f3b4dc151e7287a502f08a8a1b527d515c19628a7685e90fcb3b",
+      "operation": "procedure_pseudo_code"
+    },
+    {
+      "response": "connection-io.json",
+      "evidence_id": "ev_d63626283fb30d1b8042d06bb0e99bbbb50ed5623b7c3e01c67893eabdc53913",
+      "operation": "batch_decompile"
+    },
+    {
+      "response": "discovery-bind-instructions.json",
+      "evidence_id": "ev_2febb41e0893158cb906621fe2572af6fc529c7d3a208abb5b917a8826af4711",
+      "operation": "read_function_instructions"
+    },
+    {
+      "response": "discovery-connect.json",
+      "evidence_id": "ev_9015c587419a5b25c14aefaec6853caa818860e2656b49ec5b4e8e0e9bb09113",
+      "operation": "batch_decompile"
+    },
+    {
+      "response": "discovery-frame-instructions.json",
+      "evidence_id": "ev_39a3d365bd29c146a57175b6fa7a74a81f4dcff6cd5e0dc0d11338729b2d42b7",
+      "operation": "read_function_instructions"
+    },
+    {
+      "response": "discovery-hello-callers.json",
+      "evidence_id": "ev_3ea1b3efec5648bcebee5087286ea25efe18e0e377ede75c0bb3985a53d939d9",
+      "operation": "procedure_callers"
+    },
+    {
+      "response": "discovery-init-final.json",
+      "evidence_id": "ev_5928e40cc05a92258f693370739222b120323b76cb5dc028f65f47a4a13c2372",
+      "operation": "batch_decompile"
+    },
+    {
+      "response": "enet-socket-vtable.json",
+      "evidence_id": "ev_4236228518512887c180e1d3c6a79629866ef8106a8c19af5d423f5220c2bc0d",
+      "operation": "read_bytes"
+    },
+    {
+      "response": "frame-crypto-packers.json",
+      "evidence_id": "ev_c96d5ddf43030d31f8d85b326608fe1e93f3a3b87fbcfe7fddd06007fab2537a",
+      "operation": "batch_decompile"
+    },
+    {
+      "response": "frame-instructions.json",
+      "evidence_id": "ev_d184119f9b997b44a5ee512cfaa85a09cd684ca9bb9aec89e31217a0ef9ef893",
+      "operation": "read_function_instructions"
+    },
+    {
+      "response": "heartbeat-enet-primitives.json",
+      "evidence_id": "ev_9050d3043edb83272b8b8306ec78632c6776c22169f55370f7dfe589416e62e9",
+      "operation": "batch_decompile"
+    },
+    {
+      "response": "heartbeat-final-io.json",
+      "evidence_id": "ev_9ff2f7e26d0625ca51ba124270ac8ac6952de8a2c94022f860e7e01d6ed3ba75",
+      "operation": "batch_decompile"
+    },
+    {
+      "response": "heartbeat-packer-callers.json",
+      "evidence_id": "ev_7a280348d51d9ca847536625e57af8a471fa649dc91f89463adb97378ce39962",
+      "operation": "procedure_callers"
+    },
+    {
+      "response": "heartbeat-producer-callers.json",
+      "evidence_id": "ev_86ad627fac0ff7b9f1e1c3096f5f39e7c64cbb9379f91e0b4831d3ed642f8149",
+      "operation": "procedure_callers"
+    },
+    {
+      "response": "heartbeat-socket-final.json",
+      "evidence_id": "ev_e5abcae18e3fd6fe09344c7f91f823119b669025265317f489c602353b878693",
+      "operation": "batch_decompile"
+    },
+    {
+      "response": "heartbeat-timer-callers.json",
+      "evidence_id": "ev_1ef381d85af3a1040019077e9f58e3ed764a596d1627184ca18b90fb228611dd",
+      "operation": "procedure_callers"
+    },
+    {
+      "response": "heartbeat-timer-instructions.json",
+      "evidence_id": "ev_5a47d35cedd68c8fa850ecb1a267955528b5fa2c5ace0e540701c6014a50851b",
+      "operation": "read_function_instructions"
+    },
+    {
+      "response": "heartbeat-vtable-xrefs.json",
+      "evidence_id": "ev_5d9b54f4fcdf8526edb0ac79053b65180c6c296f1a30fa9179fadf8c0bcdfab9",
+      "operation": "xrefs"
+    },
+    {
+      "response": "login-config-strings.json",
+      "evidence_id": "ev_ce654d7b92e3323d6c4b410e991e80f0f8bb0b2d30f8d54a3c185fcfd4f49afd",
+      "operation": "search_strings"
+    },
+    {
+      "response": "network-config-strings.json",
+      "evidence_id": "ev_f172f1a77511a49d82f883726f3cf04217ae5ea73a82505b99ab408e92f7ce8c",
+      "operation": "search_strings"
+    },
+    {
+      "response": "network-entry-callers.json",
+      "evidence_id": "ev_ebd7874669e4f1328a3a63dae563bed769fd7a1f197b6ef24d746cefefe7ce5a",
+      "operation": "procedure_callers"
+    },
+    {
+      "response": "network-entry.json",
+      "evidence_id": "ev_ae01248d9f334f7d4142b7eca4f0c677e5026b9c13724422b4bd05b62457ecc0",
+      "operation": "procedure_pseudo_code"
+    },
+    {
+      "response": "network-source.json",
+      "evidence_id": "ev_fc6f5ad30191ba52bac2b9a9b7951f33039eac020e1b6a34e0e51978974f55d6",
+      "operation": "batch_decompile"
+    },
+    {
+      "response": "node-init-callers.json",
+      "evidence_id": "ev_6c0a21b1bfd7753f408e953b725efdd16ec39f9ad5f6e30a1de63d5ea0a3c695",
+      "operation": "procedure_callers"
+    },
+    {
+      "response": "node-log-strings.json",
+      "evidence_id": "ev_f56edda366547f77f32a4e9f4b2d12dbd9df2c4db1244db9691ee30303d2d516",
+      "operation": "search_strings"
+    },
+    {
+      "response": "online-handshake-vtables.json",
+      "evidence_id": "ev_3b389bbe085bbe341aee601060e696cffe31d9c88beb05a4556d4d159232fe5c",
+      "operation": "read_bytes"
+    },
+    {
+      "response": "queue-discovery.json",
+      "evidence_id": "ev_78eff8b5eec842a26c0e5c42c6b4084cf4a1119c3302c17dc56770bcdc024be2",
+      "operation": "batch_decompile"
+    },
+    {
+      "response": "route-callers.json",
+      "evidence_id": "ev_74ebc9320dd414643204b555d82302b012e0c5f3e7cef44b73dece7dd89f831d",
+      "operation": "procedure_callers"
+    },
+    {
+      "response": "route-counter-instructions.json",
+      "evidence_id": "ev_b2733a880c76100364c7218663e05e81017f64986ba27ec095b588ae437cb93e",
+      "operation": "read_function_instructions"
+    },
+    {
+      "response": "route-discovery-io.json",
+      "evidence_id": "ev_ee510a12abfd7331fd4a2eac02c720a246123c22dea4e4cf19c588745db923bd",
+      "operation": "batch_decompile"
+    },
+    {
+      "response": "route-event-callers.json",
+      "evidence_id": "ev_6b6c6e58691487e12053cfe1c599d13e03022f6f0958460211da5dc9f4216a6a",
+      "operation": "procedure_callers"
+    },
+    {
+      "response": "route-map-write-instructions.json",
+      "evidence_id": "ev_8884b6fcc3b5070cc6aa569734f4157cb3eedf65ff0547121dc030174e3710ad",
+      "operation": "read_function_instructions"
+    },
+    {
+      "response": "route-wire.json",
+      "evidence_id": "ev_0e881c2f9aba9e519665c6942868c06d7e6656f7718e87896bdcd652b880cb86",
+      "operation": "batch_decompile"
+    },
+    {
+      "response": "route-writer-callers.json",
+      "evidence_id": "ev_bdad80d693e2ab46669f2409c37943a9311528000e5ec8e1a25384dd2167d194",
+      "operation": "procedure_callers"
+    },
+    {
+      "response": "send-consumer-callers.json",
+      "evidence_id": "ev_a0dd3ed6f472c472c53177d9293a6f4f75b4a1e6c1cb29003fb6666c0f44194a",
+      "operation": "procedure_callers"
+    },
+    {
+      "response": "send-route-final.json",
+      "evidence_id": "ev_873270d1e11cabd1c416cd6b07e57c4b0036554cb1a9a4d3e937c96589d30f83",
+      "operation": "batch_decompile"
+    },
+    {
+      "response": "static-key.json",
+      "evidence_id": "ev_443cdda2910f32a89d2f522c6ce2f9e9544ba2757d3f04ede6c4dc8813d1ffba",
+      "operation": "read_bytes"
+    },
+    {
+      "response": "tcp-connect-instructions.json",
+      "evidence_id": "ev_d6066404f14adef9974e95ae746ffd7215e9109c42db47114d1fd36a1302cfb0",
+      "operation": "read_function_instructions"
+    },
+    {
+      "response": "tcp-send-instructions.json",
+      "evidence_id": "ev_fbf490922b1f01806007ebaa9358a90d0ebbcde4235db5ed18b8b4889cad39e4",
+      "operation": "read_function_instructions"
+    },
+    {
+      "response": "timers-enet.json",
+      "evidence_id": "ev_29863dee2b03d41bde5b6edbceb2b3188303cf8c1b1a1243c73ee79f50d7ed64",
+      "operation": "batch_decompile"
+    },
+    {
+      "response": "transport-startup.json",
+      "evidence_id": "ev_97099b316a0b84f29da42a9ad311f72684a91e69bb0276d57a4034e3007f6670",
+      "operation": "batch_decompile"
+    },
+    {
+      "response": "xtea-decrypt-instructions.json",
+      "evidence_id": "ev_7b119aec25812fa9c89f6e3bf05c7dfa31e8711814346a7c2a331181f10b6997",
+      "operation": "read_function_instructions"
+    },
+    {
+      "response": "xtea-encrypt-instructions.json",
+      "evidence_id": "ev_8b37712f3ee8007649182a0085fbaeb617014f33c072ec1fd087cc02563d965c",
+      "operation": "read_function_instructions"
+    }
+  ],
+  "historical_evidence_ids": [
+    "ev_139c8d9b7089de68a3e6a4de0a75930235a6f318e25926c74759ed94cd00fb7b",
+    "ev_17d599ba7a6250a059051f51594bdcf6194448246f10f3ac131758f1b83d01b0",
+    "ev_39e1327210594fb8f304fa3a9f4804a0980e82a4398da74a43c24ef428df5305",
+    "ev_63118a91c23c27d07c14e92531f4c51bc2a9d8cadc9f3a35dc915cf784c14a4b",
+    "ev_69223e3e5dc8679c09d1a487fecef9a8b56f49cb60b30fcdd233a1af124f82d6"
+  ]
+}

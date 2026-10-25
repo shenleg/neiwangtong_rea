@@ -2,7 +2,7 @@
 
 已验证：独立 Go Windows 386 程序通过正常登录的内网通 3.4.3055 客户端，以业务 `WM_COPYDATA` 向唯一授权原生群发送固定文本，独立接收端确认新增一条、发送者和正文正确。
 
-当前只维护这条已成功的 IPC 路线，不继续开发 IPMsg 替代原生群、UI 自动化发送或自造网络协议；不使用注入、提权或修改客户端。
+现有网关继续使用这条已成功的 IPC 路线，不用 IPMsg 或 UI 自动化代替原生群；不使用注入、提权或修改客户端。另行开展的[原生网络协议实现](docs/research/reports/native-protocol/protocol-spec.md)已通过单对端真实上线验收：Linux Go 新节点在 Windows 原客户端显示在线，用户已确认，随后正常退出，见[验收记录](docs/research/reports/native-protocol/native-node-online-confirmation-20261025.md)。1004/3011业务发送尚未实现，不替换现有IPC发送模块。
 
 ## 从这里开始
 
@@ -11,6 +11,7 @@
 - **使用或维护模块**：[internal/ipc 说明](docs/tools/ipc.md)。
 - **核对真实成功依据**：[原0001方式复验](docs/research/reports/ipc-phase12/0001-original-method-confirmation.md)与[正式Adapter非交互式复验05](docs/research/reports/ipc-phase12/formal-adapter-confirmation-05.md)。
 - **维护窗口定位**：[windowprobe 说明](docs/tools/windowprobe.md)。
+- **研究原生网络协议**：[静态规格、Evidence 与未完成项](docs/research/reports/native-protocol/protocol-spec.md)，[nwtprotocol 离线 PoC](docs/tools/nwtprotocol.md)；不连接真实端点。
 - **提取联系人ID或准备单聊**：[只读提取工具](docs/tools/contactid.md)，字段依据见[联系人研究](docs/research/reports/user-id/user-id-report.md)，加密读取依据见[codec验证](docs/research/reports/nr-codec/nr-codec-report.md)。
 
 ## 代码
@@ -18,6 +19,7 @@
 - `internal/ipc`：非交互式正式 Adapter，`NewAdapter(exePath)` 只绑定正常登录的唯一本机客户端；`SendGroup(groupID, message)` 和 `SendUser(userID, message)` 显式接收目标与正文，返回 `SendResult, error`，支持单次记录及外部接收观察。
 - `cmd/ipcexperiment`：薄实验命令，仅处理参数、确认与观察；默认只读，群实验须显式 `-send` 并确认群目标与固定正文。`Config / LoadConfig` 保留供 CLI 读取目标，不是 Adapter 授权配置；已去除 `-attempt-id`，使用发送返回的自动标识追加观察。
 - `internal/windowprobe`、`cmd/windowprobe`：只读窗口采集与严格定位。
+- `internal/nativeproto`：节点/ENet/业务帧、分片、XML、新身份、单对端 UDP 和限时应用上线；`cmd/nwtprotocol` 只开放离线模式；`cmd/nwtnode` 默认只校验，显式 `-run` 才执行已授权上线，见[说明](docs/tools/nwtnode.md)。
 - `tools/contactid.py`：固定codec读取离线加密联系人副本，支持仅看schema和原始姓名精确匹配，不发送、不改配置；Windows合成加密测试及[授权真实副本读取](docs/research/reports/user-id/readonly-validation.md)已通过，联系人名称匹配为not_found；经操作者另确认是本机名称，已从唯一身份表后缀取得本机ID，未配置或发送。
 
 Adapter 不保存配置目标，不做授权目标白名单或 `Config` 比较；默认调用方有权向指定目标发送，Adapter 不另设权限检查，合法目标与正文调用即尝试发送。两个发送方法支持非空、有效 UTF-8、无 NUL 的自定义正文；不再限定为 `ipc.Message` 或统一 512 字节，而是按[正文内容预算](docs/research/reports/ipc-message-content/refined-body-bound.md)计算序列化保守上界，与共同预算 261950 个 UTF-16 code units 比较，超出时在发送前明确拒绝，不截断、不拆分、不重试。这不是厂商最大消息长度。**已知问题：另行授权的261003字真实验证引发客户端卡顿/退出及用户报告的持续重试，用户自行重装恢复；当前尚未另加产品级限额，不能把静态预算当作可用长度。** 详见[异常与恢复记录](docs/research/reports/ipc-phase12/custom-max-body-abnormal.md)。
