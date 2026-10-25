@@ -1,4 +1,4 @@
-// 本文件集中定义两个宿主（命令行与托盘）共用的启动参数与构建逻辑，避免入口间复制漂移。
+// 本文件集中定义托盘宿主的启动参数与构建逻辑：全部参数可留空，留空时自动识别。
 package agent
 
 import (
@@ -18,23 +18,38 @@ type Flags struct {
 }
 
 // RegisterFlags 在给定 FlagSet 上注册公共参数；两个宿主可再追加自己的参数。
+// 除 -addr 外全部可留空：留空时 Build 自动识别，显式传入则优先。
 func RegisterFlags(set *flag.FlagSet) Flags {
 	return Flags{
-		Exe:          set.String("exe", "", "操作者确认的ShiYeLine.exe Windows绝对路径"),
+		Exe:          set.String("exe", "", "ShiYeLine.exe Windows绝对路径；留空时自动探测 Program Files 下的 nwt* 安装目录"),
 		Addr:         set.String("addr", "127.0.0.1:8787", "HTTP 监听地址；默认仅本机回环"),
-		NRPath:       set.String("nr", "", "完整离线nr联系人副本路径（可选，名称解析用）"),
-		PasswordFile: set.String("password-file", "", "nr codec 口令文件的绝对路径（配置-nr时必须提供）"),
-		QRPPath:      set.String("qrp", "", "完整离线qrp群副本路径（可选，群名称解析用）"),
+		NRPath:       set.String("nr", "", "nr 联系人库路径；留空时用 <exe目录>\\Syl\\cache\\db\\nr"),
+		PasswordFile: set.String("password-file", "", "nr codec 口令文件路径；留空时从 exe 内嵌字符串自动提取（样本地址 0x9e2e3c）"),
+		QRPPath:      set.String("qrp", "", "qrp 群库路径；留空时用 <exe目录>\\Syl\\data\\qrp"),
 	}
 }
 
-// Build 校验参数、读取口令文件并构造 Agent；口令只在内存使用。
+// Build 补全留空参数（exe 探测、数据路径推导、口令提取）、读取口令并构造 Agent；
+// 口令只在内存使用。
 func Build(flags Flags) (*Agent, error) {
-	if *flags.Exe == "" {
-		return nil, fmt.Errorf("必须提供-exe绝对路径")
+	exePath := *flags.Exe
+	if exePath == "" {
+		detected, err := DetectExePath()
+		if err != nil {
+			return nil, err
+		}
+		exePath = detected
 	}
-	if (*flags.NRPath == "") != (*flags.PasswordFile == "") {
-		return nil, fmt.Errorf("-nr 与 -password-file 必须同时提供或同时省略")
+	nrPath := *flags.NRPath
+	if nrPath == "" {
+		nrPath = DeriveNRPath(exePath)
+	}
+	qrpPath := *flags.QRPPath
+	if qrpPath == "" {
+		qrpPath = DeriveQRPPath(exePath)
+	}
+	if *flags.PasswordFile != "" && nrPath == "" {
+		return nil, fmt.Errorf("提供了 -password-file 但未配置 nr 库，口令没有用途")
 	}
 	var password []byte
 	if *flags.PasswordFile != "" {
@@ -48,10 +63,16 @@ func Build(flags Flags) (*Agent, error) {
 		if err != nil {
 			return nil, fmt.Errorf("读取口令文件: %w", err)
 		}
+	} else {
+		extracted, err := ExtractCodecPassword(exePath)
+		if err != nil {
+			return nil, fmt.Errorf("%w；请改用 -password-file 显式提供口令", err)
+		}
+		password = extracted
 	}
-	return New(NewAdapterSender(*flags.Exe), Options{
-		NRPath:     *flags.NRPath,
+	return New(NewAdapterSender(exePath), Options{
+		NRPath:     nrPath,
 		NRPassword: password,
-		QRPPath:    *flags.QRPPath,
+		QRPPath:    qrpPath,
 	}), nil
 }

@@ -3,6 +3,7 @@ package api
 
 import (
 	"errors"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -50,6 +51,61 @@ func TestServerLifecycle(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatal("停止后端口仍可访问")
+}
+
+// TestServerSetAddr 验证运行中切换监听地址（回环↔通配）平滑生效且端口不变，
+// 停止状态下 SetAddr 只记录地址、下次 Start 才生效——对应托盘外网监听勾选项。
+func TestServerSetAddr(t *testing.T) {
+	server := NewServer("127.0.0.1:0", &fakeAPI{})
+	if err := server.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer server.Stop()
+	_, port, err := net.SplitHostPort(server.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.SetAddr("0.0.0.0:" + port); err != nil {
+		t.Fatal(err)
+	}
+	if !server.Running() {
+		t.Fatal("切换地址后应保持运行")
+	}
+	// Windows 双栈下 0.0.0.0 监听回报 [::]，两者都算通配。
+	if host, _, _ := net.SplitHostPort(server.Addr()); host != "0.0.0.0" && host != "::" {
+		t.Fatalf("切换后监听 %s，预期通配地址", server.Addr())
+	}
+	// 通配监听下回环访问仍可达。
+	response, err := http.Get("http://127.0.0.1:" + port + "/health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("通配监听健康检查状态 %d，预期 200", response.StatusCode)
+	}
+	if err := server.SetAddr("127.0.0.1:" + port); err != nil {
+		t.Fatal(err)
+	}
+	if host, _, _ := net.SplitHostPort(server.Addr()); host != "127.0.0.1" {
+		t.Fatalf("切回后监听 %s，预期 127.0.0.1", server.Addr())
+	}
+	// 停止状态下换地址：SetAddr 不启动，Start 后按新地址监听。
+	if err := server.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.SetAddr("127.0.0.1:0"); err != nil {
+		t.Fatal(err)
+	}
+	if server.Running() {
+		t.Fatal("停止状态下 SetAddr 不应启动服务")
+	}
+	if err := server.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if host, _, _ := net.SplitHostPort(server.Addr()); host != "127.0.0.1" {
+		t.Fatalf("重新启动监听 %s，预期 127.0.0.1", server.Addr())
+	}
 }
 
 // TestServerStopWhenIdle 验证未运行时 Stop 是空操作。
