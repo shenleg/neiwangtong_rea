@@ -1,4 +1,4 @@
-// 本文件提供 API 服务的启动/停止生命周期管理，供命令行与托盘入口复用。
+// 本文件提供 API 服务的启动/停止/换地址生命周期管理，供托盘入口使用。
 package api
 
 import (
@@ -41,11 +41,13 @@ func (s *Server) Start() error {
 	if err != nil {
 		return err
 	}
+	// 局部捕获，避免 SetAddr 的停启间隙里 goroutine 读到 nil 或新对象。
+	server := &http.Server{Handler: NewMux(s.handle)}
 	s.listener = listener
-	s.server = &http.Server{Handler: NewMux(s.handle)}
+	s.server = server
 	go func() {
 		// Serve 返回即服务已停止；关闭错误除 ErrServerClosed 外不静默吞掉。
-		if err := s.server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			fmt.Fprintf(os.Stderr, "API 服务异常退出: %v\n", err)
 		}
 	}()
@@ -65,6 +67,22 @@ func (s *Server) Stop() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return server.Shutdown(ctx)
+}
+
+// SetAddr 更换监听地址并保持既定运行状态：运行中先停再按新地址启动，
+// 未运行时只记录地址供下次 Start 使用。新地址启动失败时服务保持停止并返回错误。
+func (s *Server) SetAddr(addr string) error {
+	s.mu.Lock()
+	s.addr = addr
+	running := s.server != nil
+	s.mu.Unlock()
+	if !running {
+		return nil
+	}
+	if err := s.Stop(); err != nil {
+		return err
+	}
+	return s.Start()
 }
 
 // Running 报告服务当前是否在监听。
