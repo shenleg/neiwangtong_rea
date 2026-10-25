@@ -9,6 +9,7 @@
 - **维护技术路线或准备验证**：[已验证路线与停止事项](docs/research/ipc/validated-route.md)。
 - **修改载荷、编码、目标解析或返回判定**：[IPC 契约与 Evidence](docs/research/ipc/ipc-contract.md)。
 - **使用或维护模块**：[internal/ipc 说明](docs/tools/ipc.md)。
+- **运行统一发送 API（托盘程序）**：[nwttray 说明](docs/tools/nwttray.md)，含编译、启动参数与 HTTP 接口。
 - **核对真实成功依据**：[原0001方式复验](docs/research/reports/ipc-phase12/0001-original-method-confirmation.md)与[正式Adapter非交互式复验05](docs/research/reports/ipc-phase12/formal-adapter-confirmation-05.md)。
 - **维护窗口定位**：[windowprobe 说明](docs/tools/windowprobe.md)。
 - **提取联系人ID或准备单聊**：[只读提取工具](docs/tools/contactid.md)，字段依据见[联系人研究](docs/research/reports/user-id/user-id-report.md)，加密读取依据见[codec验证](docs/research/reports/nr-codec/nr-codec-report.md)。
@@ -17,6 +18,7 @@
 
 - `internal/ipc`：非交互式正式 Adapter，`NewAdapter(exePath)` 只绑定正常登录的唯一本机客户端；`SendGroup(groupID, message)` 和 `SendUser(userID, message)` 显式接收目标与正文，返回 `SendResult, error`，支持单次记录及外部接收观察。
 - `cmd/ipcexperiment`：薄实验命令，仅处理参数、确认与观察；默认只读，群实验须显式 `-send` 并确认群目标与固定正文。`Config / LoadConfig` 保留供 CLI 读取目标，不是 Adapter 授权配置；已去除 `-attempt-id`，使用发送返回的自动标识追加观察。
+- `cmd/nwttray`：统一发送 API 的唯一宿主（Windows 托盘程序），HTTP 层在 `internal/api`、业务在 `internal/agent`，见[托盘程序说明](docs/tools/nwttray.md)；原命令行宿主 `cmd/nwtagent` 已移除。
 - `internal/windowprobe`、`cmd/windowprobe`：只读窗口采集与严格定位。
 - `tools/contactid.py`：固定codec读取离线加密联系人副本，支持仅看schema和原始姓名精确匹配，不发送、不改配置；Windows合成加密测试及[授权真实副本读取](docs/research/reports/user-id/readonly-validation.md)已通过，联系人名称匹配为not_found；经操作者另确认是本机名称，已从唯一身份表后缀取得本机ID，未配置或发送。
 

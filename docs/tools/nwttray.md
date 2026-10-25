@@ -1,20 +1,10 @@
-# 统一发送 API（nwtagent / nwttray）
+# 统一发送 API（nwttray）
 
-统一发送 API 有两个宿主：`cmd/nwtagent`（命令行）与 `cmd/nwttray`（Windows 托盘程序）。两者的 HTTP 层都在 `internal/api`、业务都在 `internal/agent`，不直接接触 HWND、WM_COPYDATA 或数据库文件；发送沿用 `internal/ipc` 的既定纪律——单次调用、不自动重试、每次发送独立日志（`%AppData%\neiwangtong-gateway\ipc-experiment\`）。
+统一发送 API 的唯一宿主是 `cmd/nwttray`（Windows 托盘程序）。HTTP 层在 `internal/api`、业务在 `internal/agent`，不直接接触 HWND、WM_COPYDATA 或数据库文件；发送沿用 `internal/ipc` 的既定纪律——单次调用、不自动重试、每次发送独立日志（`%AppData%\neiwangtong-gateway\ipc-experiment\`）。
 
-## 1. 构建与启动（命令行）
+曾经的命令行宿主 `cmd/nwtagent` 已于 2026-10-25 移除：脚本和自动化走 HTTP API，只需要服务在跑，托盘 `-autostart` 即覆盖"开机即服务"，保留第二个入口只增加使用者的选择负担。
 
-```bash
-GOOS=windows GOARCH=386 go build -o nwtagent.exe ./cmd/nwtagent
-
-./nwtagent.exe \
-  -exe 'C:\Program Files (x86)\nwt3055\ShiYeLine.exe' \
-  -nr 'C:\私有检查目录\nr-copy' \
-  -password-file 'C:\私有检查目录\codec-password.bin' \
-  -qrp 'C:\私有检查目录\qrp-copy'
-```
-
-## 2. 托盘程序（nwttray）
+## 1. 构建与运行（托盘程序）
 
 ```bash
 GOOS=windows GOARCH=386 go build -o nwttray.exe ./cmd/nwttray
@@ -32,14 +22,14 @@ GOOS=windows GOARCH=386 go build -o nwttray.exe ./cmd/nwttray
 - **菜单**：「启动 API 服务 / 停止 API 服务（地址）」切换监听；「打开 API 文档」在浏览器打开内置接口说明页（服务未启动时会先启动）；「客户端状态：已连接（PID）/未连接」为只读显示；「退出」停止服务并退出程序。
 - `-autostart`：启动后立即开始提供 API 服务，不等待托盘菜单。
 
-## 3. 公共参数说明
+## 2. 公共参数说明
 
 - 监听地址默认 `127.0.0.1:8787`（仅本机回环），用 `-addr` 修改。
 - `-nr`/`-qrp` **推荐直接指向客户端正在使用的实时数据库文件**（`<EXE目录>\Syl\cache\db\nr` 与 `<EXE目录>\Syl\data\qrp`）：Agent 按文件 mtime 缓存，客户端写盘后下一次请求自动加载新数据（实测建群后立即可查）。需要审计级一致性时改用[退出后副本](contactid-runbook.md)，替换副本文件后同样自动生效。
 - 实时文件模式下读取发生在客户端运行期间：存在 `-journal` 等边文件的事务瞬间会明确失败（不重试、不修复），下一次请求恢复；结构异常同样明确报错。每次加载完成后做**读后复核**（mtime 与边文件复查）：读取期间客户端恰好开始或完成写事务时，本次结果作废并返回 503（`ErrConcurrentWrite`），立即重试即可，不会缓存可疑数据。
 - 口令文件内容必须是 codec 口令的精确字节（读至 EOF 不去换行，末尾勿附加换行）；口令只在内存使用。
 
-## 4. API
+## 3. API
 
 ### GET /docs（内置接口文档）
 自包含的 Swagger 风格说明页（无外部资源，随服务分发）：端点清单、参数表、请求/响应示例与错误码，每个端点带"试一下"按钮同源调用真实接口；`/` 自动重定向到 `/docs`。
@@ -63,7 +53,7 @@ GOOS=windows GOARCH=386 go build -o nwttray.exe ./cmd/nwttray
 
 错误映射：400 目标/正文校验失败或请求 JSON 非法；404 名称未命中；409 同名歧义；503 客户端不可用或快照未配置；502 已占用发送日志但 Win32 调用失败（响应仍携带 `attempt_id` 等已发生事实）。
 
-## 5. 示例
+## 4. 示例
 
 ```bash
 curl -s http://127.0.0.1:8787/groups
@@ -76,14 +66,14 @@ curl -s -X POST http://127.0.0.1:8787/send/group \
   -d '{"name":"qun","text":"hello group"}'
 ```
 
-## 6. 边界与安全
+## 5. 边界与安全
 
 - 初版无鉴权，默认只监听回环地址：仅适用于本机自动化。暴露到网络前须自行加反向代理鉴权与访问控制。
 - 发送不设目标白名单（同 Adapter 契约：调用方即授权方）；每次 HTTP 发送就是一次新的单次请求，不会重试。
 - 快照多身份表、损坏行、非明文 qrp 等情况一律明确失败，不挑第一条。
 - Windows 386 构建发送；仅读取快照或列表不需要客户端运行，发送需要客户端正常登录。
 
-## 7. 后续可选升级（当前维持现状，不做）
+## 6. 后续可选升级（当前维持现状，不做）
 
 实测联系人/群在客户端运行期间即时落盘（2026-10-24：新群 qun2 建群即写；新联系人 PVE-email 运行中出现并实时可查），实时文件 + mtime 重载 + 读后复核已覆盖需求，残余差距仅"客户端刚知道、尚未写盘"的秒级窗口。若未来确需消除该窗口，两条路径及代价：
 
