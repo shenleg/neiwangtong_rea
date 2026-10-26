@@ -1,4 +1,4 @@
-// 本文件为每次明确上线创建独立协议会话；默认单对端，显式Discover时使用共享Host正常发现并连接本子网节点。
+// 本文件为每次明确上线创建共享Host，使用同一身份和双socket正常发现并连接本子网节点。
 package nativeweb
 
 import (
@@ -65,11 +65,8 @@ func openNative(config Config, runID string, log *journal) (session, error) {
 	if err := log.write(map[string]any{"event": "own_identity", "user_id": ownID, "session_guid_hex": hex.EncodeToString(guid[:])}); err != nil {
 		return nil, err
 	}
-	discoveryAddress := config.Local
-	if config.Discover {
-		discoveryAddress = netip.IPv4Unspecified() // Linux接收定向广播须绑定发现口的通配地址；Host仍按本机子网过滤来源。
-	}
-	discovery, err := net.ListenUDP("udp4", net.UDPAddrFromAddrPort(netip.AddrPortFrom(discoveryAddress, config.DiscoveryPort)))
+	// Linux接收定向广播须绑定发现口的通配地址；Host仍按本机子网过滤来源。
+	discovery, err := net.ListenUDP("udp4", net.UDPAddrFromAddrPort(netip.AddrPortFrom(netip.IPv4Unspecified(), config.DiscoveryPort)))
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +76,7 @@ func openNative(config Config, runID string, log *journal) (session, error) {
 	}
 	var directorySequence uint64
 	cfg := nativeproto.ClientConfig{
-		Node: node, Profile: profile, RemoteDiscovery: config.Remote, Contacts: directory, LearnContacts: true, GroupChat: true,
+		Node: node, Profile: profile, Contacts: directory, LearnContacts: true, GroupChat: true,
 		ObserveDirectory: func(directory *nativeproto.Directory) error {
 			directorySequence++ // Client/Host契约保证目录回调串行；同一次上线可学到多个联系人，逐份保留新快照。
 			return saveDirectory(filepath.Join(config.DataDir, fmt.Sprintf("directory-%s-%08d.json", runID, directorySequence)), directory)
@@ -92,17 +89,8 @@ func openNative(config Config, runID string, log *journal) (session, error) {
 			RetransmitAfter: 500 * time.Millisecond, MaxAttempts: 6, ReceiveTimeout: 120 * time.Second, PingInterval: 30 * time.Second},
 		Duration: config.SessionDuration, ShutdownTimeout: 5 * time.Second, DiscoveryTimeout: 10 * time.Second, HandshakeTimeout: 15 * time.Second,
 	}
-	var client session
-	if config.Discover {
-		hostConfig := nativeproto.HostConfig{Client: cfg, Prefix: config.Prefix.Masked(),
-			Broadcast: netip.AddrPortFrom(broadcast(config.Prefix), config.DiscoveryPort), MaxPeers: 32}
-		if config.Remote.IsValid() {
-			hostConfig.Seeds = []netip.AddrPort{config.Remote}
-		}
-		client, err = nativeproto.NewHost(discovery, conn, hostConfig)
-	} else {
-		client, err = nativeproto.NewClient(discovery, conn, cfg)
-	}
+	client, err := nativeproto.NewHost(discovery, conn, nativeproto.HostConfig{Client: cfg, Prefix: config.Prefix.Masked(),
+		Broadcast: netip.AddrPortFrom(broadcast(config.Prefix), config.DiscoveryPort), MaxPeers: 32})
 	if err != nil {
 		return nil, errors.Join(err, discovery.Close(), conn.Close())
 	}

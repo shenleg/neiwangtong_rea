@@ -18,15 +18,29 @@ type ChatRequest struct {
 }
 
 // ChatResult 分别报告一次请求的提交、传输 ACK 和业务 ACK；任何 ACK 都不表示独立接收确认。
+// 群发送的Submitted表示至少一个成员已提交，TransportAcknowledged仅全部成员确认时为true；Recipients保留各成员事实。
 // Submitted 为 true 后发生错误仍保留未知结果；MessageID 不会因超时、取消或断开重新生成。
 type ChatResult struct {
-	Command               uint32 `json:"command"`
-	MessageID             string `json:"message_id"`
+	Command               uint32                 `json:"command"`
+	MessageID             string                 `json:"message_id"`
+	Submitted             bool                   `json:"submitted"`
+	TransportAcknowledged bool                   `json:"transport_acknowledged"`
+	BusinessAcknowledged  bool                   `json:"business_acknowledged"`
+	ReceiptReceived       bool                   `json:"receipt_received"`
+	Delivery              string                 `json:"delivery"`
+	Recipients            []GroupRecipientResult `json:"recipients,omitempty"`
+}
+
+// GroupRecipientResult 保留一次群消息对单个原始成员的提交事实；未尝试或发送失败的原因见Error，确认不代表独立接收。
+// PeerIndex是本次Host会话内部连接序号，未就绪成员为0；Skipped表示本次未安排该成员，不存储离线消息或自动补发。
+// 已安排的成员共用外层ChatResult.MessageID；记录不含正文。
+type GroupRecipientResult struct {
+	UserID                string `json:"user_id"`
+	PeerIndex             uint16 `json:"peer_index"`
+	Skipped               bool   `json:"skipped"`
 	Submitted             bool   `json:"submitted"`
 	TransportAcknowledged bool   `json:"transport_acknowledged"`
-	BusinessAcknowledged  bool   `json:"business_acknowledged"`
-	ReceiptReceived       bool   `json:"receipt_received"`
-	Delivery              string `json:"delivery"`
+	Error                 string `json:"error"`
 }
 
 type preparedChat struct {

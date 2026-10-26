@@ -6,11 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"strings"
 	"testing"
 )
 
-// TestOpenAPIRoutesAndLocalReferences 验证规范覆盖所有公开/网页接口，本地引用有效，发送契约不要求调用方request_id或鉴权。
+// TestOpenAPIRoutesAndLocalReferences 验证规范覆盖所有接口，仅定义子网发现且本地引用有效，公开发送不要求调用方request_id或鉴权。
 func TestOpenAPIRoutesAndLocalReferences(t *testing.T) {
 	manager, _ := testManager(t)
 	handler := testHandler(t, manager)
@@ -35,6 +36,20 @@ func TestOpenAPIRoutesAndLocalReferences(t *testing.T) {
 			t.Errorf("缺少文档路径%s", path)
 		}
 	}
+	schemas := components["schemas"].(map[string]any)
+	modes := schemas["DiscoveryMode"].(map[string]any)["enum"].([]any)
+	if len(modes) != 1 || modes[0] != "subnet" {
+		t.Fatalf("Web只支持子网发现，实际枚举：%v", modes)
+	}
+	stateSchema := schemas["State"].(map[string]any)
+	stateProperties := stateSchema["properties"].(map[string]any)
+	remote := stateProperties["remote"].(map[string]any)
+	if _, err := netip.ParsePrefix(remote["example"].(string)); err != nil {
+		t.Fatalf("remote示例必须是发现子网CIDR：%v", err)
+	}
+	if !strings.Contains(remote["description"].(string), "子网 CIDR") {
+		t.Fatal("remote应说明发现子网CIDR，而非单对端地址")
+	}
 	checkLocalRefs(t, document, document)
 	for path, methods := range paths {
 		for method := range methods.(map[string]any) {
@@ -44,6 +59,57 @@ func TestOpenAPIRoutesAndLocalReferences(t *testing.T) {
 			response := performRequest(handler, http.MethodGet, path, "")
 			if response.Code == http.StatusNotFound || response.Code == http.StatusMethodNotAllowed {
 				t.Errorf("文档GET路径未注册：%s", path)
+			}
+		}
+	}
+}
+
+// TestGroupRecipientsSchemaAndExamples 验证逐成员字段可省略、两种响应均声明该字段，群成功和部分失败示例保留聚合事实。
+func TestGroupRecipientsSchemaAndExamples(t *testing.T) {
+	data, err := assets.ReadFile("assets/docs/openapi.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	schemas := document["components"].(map[string]any)["schemas"].(map[string]any)
+	for _, name := range []string{"ChatResult", "SendResponse"} {
+		schema := schemas[name].(map[string]any)
+		for _, required := range schema["required"].([]any) {
+			if required == "recipients" {
+				t.Errorf("%s的预检查失败必须允许省略recipients", name)
+			}
+		}
+		recipients := schema["properties"].(map[string]any)["recipients"].(map[string]any)
+		if recipients["items"].(map[string]any)["$ref"] != "#/components/schemas/RecipientResult" {
+			t.Errorf("%s缺少逐成员结果定义", name)
+		}
+	}
+	recipientProperties := schemas["RecipientResult"].(map[string]any)["properties"].(map[string]any)
+	for _, field := range []string{"user_id", "peer_index", "skipped", "submitted", "transport_acknowledged", "error"} {
+		if _, ok := recipientProperties[field]; !ok {
+			t.Errorf("缺少逐成员事实字段：%s", field)
+		}
+	}
+	paths := document["paths"].(map[string]any)
+	for _, path := range []string{"/send/group", "/api/messages/group"} {
+		responses := paths[path].(map[string]any)["post"].(map[string]any)["responses"].(map[string]any)
+		for _, status := range []string{"200", "502"} {
+			example := responses[status].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["example"].(map[string]any)
+			if path == "/api/messages/group" {
+				example = example["result"].(map[string]any)
+			}
+			if example["command"] != float64(3011) || example["submitted"] != true || example["transport_acknowledged"] != false || example["delivery"] != "unknown" || example["business_acknowledged"] != false || example["receipt_received"] != false {
+				t.Fatalf("%s %s群聚合示例错误：%v", path, status, example)
+			}
+			recipients := example["recipients"].([]any)
+			if len(recipients) != 2 || recipients[0].(map[string]any)["transport_acknowledged"] != true || recipients[0].(map[string]any)["skipped"] != false || recipients[1].(map[string]any)["skipped"] != (status == "200") {
+				t.Fatalf("%s %s未区分离线跳过与实际路由失败：%v", path, status, recipients)
+			}
+			if status == "200" && (recipients[1].(map[string]any)["submitted"] != false || recipients[1].(map[string]any)["error"] == "") {
+				t.Fatalf("%s离线成员被伪造为已提交：%v", path, recipients)
 			}
 		}
 	}
@@ -73,6 +139,28 @@ func checkLocalRefs(t *testing.T, root map[string]any, value any) {
 	case []any:
 		for _, child := range value {
 			checkLocalRefs(t, root, child)
+		}
+	}
+}
+
+// TestChatAssetsUseSubnetDiscovery 验证页面展示子网发现及在线成员投递规则，不再要求全员就绪或保留单对端模式。
+func TestChatAssetsUseSubnetDiscovery(t *testing.T) {
+	for _, path := range []string{"assets/index.html", "assets/app.js", "assets/app.css", "assets/docs/openapi.json"} {
+		data, err := assets.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, obsolete := range []string{"单对端", "single_peer", "single-peer", "指定对端"} {
+			if strings.Contains(string(data), obsolete) {
+				t.Errorf("%s仍包含已移除模式：%s", path, obsolete)
+			}
+		}
+		if path == "assets/index.html" {
+			for _, required := range []string{"局域网发现 · 0 人在线", "发现子网", "支持多对端联系人、单聊和多成员群发送", "向在线就绪成员投递", "未投递", "不离线存储、不自动补发"} {
+				if !strings.Contains(string(data), required) {
+					t.Errorf("页面缺少子网发现说明：%s", required)
+				}
+			}
 		}
 	}
 }

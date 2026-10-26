@@ -1,0 +1,22 @@
+# 本文件提供 Linux host 网络部署；默认自动识别本机网络，只启动离线网页。
+# 新部署执行 docker compose up -d --build；只需按需修改挂载左侧的宿主目录。
+# 旧部署必须继续将原命名卷挂到 /data，保留身份与日志；不要直接改用空 ./data，也不要删除或迁移旧卷。
+services:
+  nwtweb:
+    build:
+      context: .
+    image: nwtweb:local
+    pull_policy: never
+    network_mode: host
+    restart: "no"
+    # 程序正常退出预算为 10s，额外留出信号处理和调度时间。
+    stop_grace_period: 20s
+    # 上线后自动发现本子网客户端；默认只启动网页，不连接或广播。
+    # 默认名称NWT-Go-Web；网页和API无鉴权，仅供可信局域网，无需端口映射。
+    # 容器默认以 root 运行，不自动修改已有宿主目录的归属。
+    volumes:
+      - ./data:/data
+
+# 保留旧部署的命名卷声明；沿用时将上方挂载改回 nwtweb-data:/data，并保持原 Compose 项目名。
+volumes:
+  nwtweb-data:

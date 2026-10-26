@@ -134,6 +134,9 @@ func TestPublicSendByIDAndName(t *testing.T) {
 // TestPublicRejectsInvalidRequests 验证不明确的目标、混用ID、重复字段、坏JSON及正文预算在发送前拒绝。
 func TestPublicRejectsInvalidRequests(t *testing.T) {
 	_, fake, handler := startPublicManager(t)
+	fake.mu.Lock()
+	fake.snapshot.Groups = append(fake.snapshot.Groups, nativeproto.GroupInfo{GroupID: "group-offline", Name: "全员离线群", Members: []string{"synthetic-own", "other-peer"}})
+	fake.mu.Unlock()
 	for _, tc := range []struct {
 		path, body string
 		want       int
@@ -153,7 +156,7 @@ func TestPublicRejectsInvalidRequests(t *testing.T) {
 		{"/send/user", `{"user_id":"missing-peer","text":"正文"}`, 404},
 		{"/send/user", `{"name":"不存在","text":"正文"}`, 404},
 		{"/send/user", `{"user_id":"other-peer","text":"正文"}`, 503},
-		{"/send/group", `{"group_id":"group-three","text":"正文"}`, 409},
+		{"/send/group", `{"group_id":"group-offline","text":"正文"}`, 503},
 	} {
 		response := performRequest(handler, http.MethodPost, tc.path, tc.body)
 		if response.Code != tc.want {
@@ -162,6 +165,39 @@ func TestPublicRejectsInvalidRequests(t *testing.T) {
 	}
 	if fake.calls.Load() != 0 {
 		t.Fatal("坏请求触发了发送")
+	}
+}
+
+// TestPublicGroupSkipsOfflineMember 验证在线成员投递成功时返回200及离线成员明细，后续成员上线不自动补发或修改旧结果。
+func TestPublicGroupSkipsOfflineMember(t *testing.T) {
+	_, fake, handler := startPublicManager(t)
+	fake.recipients = []nativeproto.GroupRecipientResult{
+		{UserID: "synthetic-peer", PeerIndex: 1, Submitted: true, TransportAcknowledged: true},
+		{UserID: "other-peer", Skipped: true, Error: "协议连接尚未就绪，本次未投递"},
+	}
+	recorded := performRequest(handler, http.MethodPost, "/send/group", `{"group_id":"group-three","text":"向在线成员发送"}`)
+	var response publicSendResponse
+	if err := json.Unmarshal(recorded.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if recorded.Code != http.StatusOK || response.Error != "" || !response.Submitted || response.TransportAcknowledged || len(response.Recipients) != 2 || !response.Recipients[1].Skipped || fake.calls.Load() != 1 {
+		t.Fatalf("离线成员阻断请求或被伪造为全部确认：%d %+v", recorded.Code, response)
+	}
+	fake.mu.Lock()
+	fake.snapshot.OnlineUserIDs = append(fake.snapshot.OnlineUserIDs, "other-peer")
+	fake.mu.Unlock()
+	_ = performRequest(handler, http.MethodGet, "/api/state", "")
+	body, err := json.Marshal(map[string]string{"request_id": response.RequestID, "group_id": "group-three", "text": "向在线成员发送"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cached := performRequest(handler, http.MethodPost, "/api/messages/group", string(body))
+	var previous MessageResponse
+	if err := json.Unmarshal(cached.Body.Bytes(), &previous); err != nil {
+		t.Fatal(err)
+	}
+	if cached.Code != http.StatusOK || !previous.Result.Recipients[1].Skipped || fake.calls.Load() != 1 {
+		t.Fatalf("成员上线触发补发或改写原请求：%d %+v", cached.Code, previous)
 	}
 }
 

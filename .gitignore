@@ -17,6 +17,9 @@
 # 独立原生节点的本机身份、单次上线记录与私有构建，不提交真实端点或本机新身份。
 /local/nativeclient/
 
+# Docker 默认挂载的独立身份和私有记录。
+/data/
+
 # 操作系统与编辑器临时文件。
 .DS_Store
 Thumbs.db

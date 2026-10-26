@@ -1,4 +1,4 @@
-// 本文件用两个真实nativeproto.Client验证Web管理器的首次上线、联系人持久化、单聊传输确认及正常停止；仅使用临时目录和loopback。
+// 本文件用真实Host和合成Client验证Web默认子网发现、联系人持久化、单聊传输确认及正常停止；仅使用临时目录和loopback。
 package nativeweb
 
 import (
@@ -45,13 +45,12 @@ func awaitNativeIntegrationStage(t *testing.T, manager *Manager, stage string) {
 	t.Fatalf("未记录%s：%+v", stage, manager.State())
 }
 
-// TestNativeStopDuringDiscovery 验证尚未READY时人工下线正常返回offline，不把errors.Join包装的主动取消显示为失败。
-func TestNativeStopDuringDiscovery(t *testing.T) {
+// TestNativeStopWhileWaitingForContacts 验证Host已就绪但没有联系人时可正常下线，不把主动取消显示为失败。
+func TestNativeStopWhileWaitingForContacts(t *testing.T) {
 	localD := nativeIntegrationSocket(t, "127.0.0.1")
 	localE := nativeIntegrationSocket(t, "127.0.0.1")
-	remote := nativeIntegrationSocket(t, "127.0.0.2")
 	config := Config{Local: netip.MustParseAddr("127.0.0.1"), Prefix: netip.MustParsePrefix("127.0.0.0/8"),
-		Remote: remote.LocalAddr().(*net.UDPAddr).AddrPort(), Name: "合成停止测试", DataDir: t.TempDir(),
+		Name: "合成停止测试", DataDir: t.TempDir(),
 		DiscoveryPort: localD.LocalAddr().(*net.UDPAddr).AddrPort().Port(), ENetPort: localE.LocalAddr().(*net.UDPAddr).AddrPort().Port()}
 	if err := localD.Close(); err != nil {
 		t.Fatal(err)
@@ -67,7 +66,7 @@ func TestNativeStopDuringDiscovery(t *testing.T) {
 	if err := manager.Start(manager.State().Name); err != nil {
 		t.Fatal(err)
 	}
-	awaitNativeIntegrationStage(t, manager, "discovery_sent")
+	awaitNativeIntegrationStage(t, manager, "protocol_ready")
 	manager.Stop()
 	state := awaitPhase(t, manager, "offline")
 	if state.Error != "" {
@@ -93,7 +92,7 @@ func nativeFirstStartSendAndRestore(t *testing.T, viaHTTP bool) {
 	localDiscoveryAddr := localDiscovery.LocalAddr().(*net.UDPAddr).AddrPort()
 	peerDiscoveryAddr := peerDiscovery.LocalAddr().(*net.UDPAddr).AddrPort()
 	config := Config{Local: localDiscoveryAddr.Addr(), Prefix: netip.MustParsePrefix("127.0.0.0/8"),
-		Remote: peerDiscoveryAddr, Name: "合成Web集成节点", DataDir: t.TempDir(),
+		Name: "合成Web集成节点", DataDir: t.TempDir(),
 		DiscoveryPort: localDiscoveryAddr.Port(), ENetPort: localENet.LocalAddr().(*net.UDPAddr).AddrPort().Port()}
 	manager, err := New(config)
 	if err != nil {
@@ -173,8 +172,8 @@ func nativeFirstStartSendAndRestore(t *testing.T, viaHTTP bool) {
 	} else if err := manager.Start(startName); err != nil {
 		t.Fatal(err)
 	}
-	// 对端socket已绑定，可接收管理器的发现包；等管理器发送后再Run，避免对端的一次发现落到尚未绑定的端口。
-	awaitNativeIntegrationStage(t, manager, "discovery_sent")
+	// Host就绪后由合成对端主动公告，验证默认子网接收，不配置单播种子或替换session factory。
+	awaitNativeIntegrationStage(t, manager, "protocol_ready")
 	peerStarted = true
 	go func() {
 		peerResult, peerErr = peer.Run(ctx, func(event nativeproto.ClientEvent) error {
@@ -188,7 +187,8 @@ func nativeFirstStartSendAndRestore(t *testing.T, viaHTTP bool) {
 		})
 		close(peerDone)
 	}()
-	state := awaitPhase(t, manager, "online")
+	awaitNativeIntegrationStage(t, manager, "peer_ready")
+	state := manager.State()
 	select {
 	case <-peerReady:
 	case <-peerDone:

@@ -6,7 +6,7 @@
 
 业务 WM_COPYDATA 的原生群固定文本实验已成功，独立接收端确认正确群中新增一条、发送者与正文正确。生产发送继续维护已验证的 Go 实现，不从历史报告重新开始生产者搜索。
 
-**独立网络上线已验收**：2026-10-25，Linux Go 新节点完成真实单对端上线，用户在 Windows 原客户端确认 `NWT-Go-Linux` 在线；随后程序正常退出。原生网络模块已实现联系人列表选择、1004单聊一次提交及1005/1006回执解析，并完成向PVE-WIN10发送固定短正文一次的独立接收验收，见 `docs/research/reports/native-protocol/native-user-message-confirmation-20261025.md`；另已新增 `cmd/nwtclient` 常驻在线与同连接连续单聊，并完成175.4秒真实运行、两条独立接收、心跳及SIGTERM正常退出验收，用户确认看到在线、现在已离线，见 `docs/research/reports/native-protocol/native-resident-confirmation-20261025.md`。3011群聊现已实现正常群同步与单peer完整成员检查，并完成向`qun3`同连接连续两条、175.35秒运行及正常退出验收，用户确认两条全文、发送者、条数与顺序正确，见`docs/research/reports/native-protocol/native-group-confirmation-20261025.md`。多peer群仍未实现，入群由人工操作。不替换现有IPC。依据见 `docs/research/reports/native-protocol/native-node-online-confirmation-20261025.md`；上线成功不延续真实连接或聊天发送授权。
+**独立网络上线已验收**：2026-10-25，Linux Go 新节点完成真实单对端上线，用户在 Windows 原客户端确认 `NWT-Go-Linux` 在线；随后程序正常退出。原生网络模块已实现联系人列表选择、1004单聊一次提交及1005/1006回执解析，并完成向PVE-WIN10发送固定短正文一次的独立接收验收，见 `docs/research/reports/native-protocol/native-user-message-confirmation-20261025.md`；另已新增 `cmd/nwtclient` 常驻在线与同连接连续单聊，并完成175.4秒真实运行、两条独立接收、心跳及SIGTERM正常退出验收，用户确认看到在线、现在已离线，见 `docs/research/reports/native-protocol/native-resident-confirmation-20261025.md`。3011群聊现已实现正常群同步与单peer完整成员检查，并完成向`qun3`同连接连续两条、175.35秒运行及正常退出验收，用户确认两条全文、发送者、条数与顺序正确，见`docs/research/reports/native-protocol/native-group-confirmation-20261025.md`。上述真实群验收仅覆盖双成员群；Host多成员投递现已实现并完成合成测试，尚未真实验收，入群由人工操作。不替换现有IPC。依据见 `docs/research/reports/native-protocol/native-node-online-confirmation-20261025.md`；上线成功不延续真实连接或聊天发送授权。
 
 - 实现：`internal/ipc`非交互式Adapter，提供 `LoadConfig`、`NewAdapter`、`Preflight`、`SendGroup`、`SendUser`、`RecordObservation`；命令入口保留 `cmd/ipcexperiment`，仍只处理群发送参数、确认与观察，默认只读。
 - 客户端：正常授权身份登录的内网通 3.4.3055，Windows x86。
@@ -16,7 +16,7 @@
 - 群与单聊固定正文均已另经明确授权获独立接收确认，单聊见 `docs/research/reports/ipc-phase12/user-confirmation-01.md`。该次 `NWT-GW-AUTH-TEST-0001-user-confirmation-01` 和其他历史记录继续保留。接口修改后已另经授权通过新版 `SendGroup(groupID, ipc.Message)` 向 `qun` 发送一次，独立接收确认后记录为 `recipient_observed`，见 `docs/research/reports/ipc-phase12/explicit-target-group-confirmation.md`；新版 `SendUser(userID, ipc.Message)` 随后也获授权完成一次单聊并得到独立接收确认，见 `docs/research/reports/ipc-phase12/explicit-target-user-confirmation.md`。
 - 项目长期目标仍是独立 Windows Go 网关与 HTTP 接口；Adapter已提供有容量校验的自定义正文，当前未开放名称/IP目标或 HTTP。实验CLI仍只发送固定 `ipc.Message`。
 
-**Web与多对端联系人**：`cmd/nwtweb` 默认只启动网页，`-discover` 显式启用同一身份、共享双socket的子网正常发现；已完成三个真实客户端READY及HTTP列表3/3验证，见 `docs/research/reports/native-protocol/native-web-three-contacts-20261025.md`。真实发现包允许零公告IP，连接仍使用限定子网中的UDP实际来源。多成员群投递仍未实现；入群人工操作；本次发现验证不延续新连接或聊天授权。
+**Web与多对端联系人**：`cmd/nwtweb` 默认只读识别本机IPv4及真实掩码、监听 `0.0.0.0:8788` 并提供协议离线网页；`-local` 可手动覆盖，识别歧义报错，不探测或猜掩码。Compose无需网络环境变量，仅挂数据目录；按用户明确选择默认root运行。上线后自动使用同一身份、共享双socket发现本子网客户端；现仅保留子网多对端，不提供 `-remote` 或 `-discover` 参数。已完成三个真实客户端READY及HTTP列表3/3验证，见 `docs/research/reports/native-protocol/native-web-three-contacts-20261025.md`。真实发现包允许零公告IP，连接仍使用限定子网中的UDP实际来源。Host已实现完整成员逐路由群投递：按用户选择向当前在线可用成员提交同一消息，离线/未就绪/群文本能力不兼容的成员明确记录为skipped，不阻断其他人；返回逐成员事实，不离线存储、不自动补发；仅经合成loopback测试，尚未取得真实多成员接收确认。入群人工操作；本次发现验证不延续新连接或聊天授权。
 
 ## 按任务读取
 
@@ -26,7 +26,7 @@
 4. **核对成功结果**：读 `docs/research/reports/ipc-phase12/0001-original-method-confirmation.md`。历史阶段的“未调用”“尚不可实现”仅描述当时状态，不覆盖后续成功证据。
 5. **为IPC提取联系人ID或准备单聊**：使用 `docs/tools/contactid.md` 的只读工具，联系人来源仅为 `cache/db/nr` 的 `OrgStruct_*`，原样保留ID，结果人工核实后才配置发送。字段依据见 `docs/research/reports/user-id/user-id-report.md`，已验证codec见 `docs/research/reports/nr-codec/nr-codec-report.md`；已通过合成加密测试及授权真实副本只读验证，联系人原始名称为not_found；操作者另确认输入为本机名称后已从唯一身份表后缀取得本机ID，未改配置或发送，见联系人报告同目录 `readonly-validation.md`。不使用群成员表替代，不猜ID或解密参数。
 6. **维护原生网络上线或继续实现发送**：限时实验读 `docs/tools/nwtnode.md`；常驻/连续单聊读 `docs/tools/nwtclient.md`；群同步/3011读 `docs/tools/native-group-chat.md`及静态报告`docs/research/reports/native-protocol/group-chat-contract.md`，真实群聊结果见`docs/research/reports/native-protocol/native-group-confirmation-20261025.md`；真实上线依据读 `docs/research/reports/native-protocol/native-node-online-confirmation-20261025.md`；节点字段修改读同目录 `node-registration-contract.md`；单聊正文/编号/回执修改读同目录 `chat-contract.md`，联系人使用独立身份自己的列表；传输修改读 `docs/tools/native-transport.md`。复用已验收的新身份/type4/1000/1018，不从“尚未上线”重新开始。
-7. **维护Web、局域网发现或多对端联系人**：先读 `docs/tools/nwtweb.md`；公开HTTP接口、精确名称和Swagger读 `docs/tools/native-api.md`（路由参考远端main，原生响应不伪造IPC，初版无鉴权、不生成密码）。核对三客户端及零公告IP修复依据读 `docs/research/reports/native-protocol/native-web-three-contacts-20261025.md`。默认单对端及旧CLI保持不变；真实广播须另获明确子网、次数及时长授权，聊天另授权。
+7. **维护Web、局域网发现或多对端联系人**：先读 `docs/tools/nwtweb.md`；公开HTTP接口、精确名称和Swagger读 `docs/tools/native-api.md`（路由参考远端main，原生响应不伪造IPC，初版无鉴权、不生成密码）。核对三客户端及零公告IP修复依据读 `docs/research/reports/native-protocol/native-web-three-contacts-20261025.md`。Web统一使用子网Host，历史实验CLI与底层单peer会话保留，不作为Web可选模式；真实广播须另获明确子网、次数及时长授权，聊天另授权。
 8. 只有追查具体证据时才读对应小文件，不一次加载全部大型证据包或快照。
 
 ## 已验证路线

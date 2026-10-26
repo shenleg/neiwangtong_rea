@@ -29,6 +29,19 @@
   // 局域网HTTP不提供randomUUID；getRandomValues仍提供安全随机数，不退回Math.random。
   const allocateID = () => Array.from(window.crypto.getRandomValues(new Uint8Array(16)), (value) => value.toString(16).padStart(2, "0")).join("");
 
+  // 跳过成员不算路由失败，也不能当作整群确认；仅已选路由全部确认时允许清除草稿。
+  function onlineTransmissionConfirmed(record) {
+    if (record.pending || record.error || !record.result) return false;
+    if (record.result.command !== 3011) return record.result.transport_acknowledged;
+    const recipients = record.result.recipients.filter((recipient) => !recipient.skipped);
+    return recipients.length > 0 && recipients.every((recipient) => recipient.submitted && recipient.transport_acknowledged && !recipient.error);
+  }
+
+  function confirmationSummary(result) {
+    const skipped = result.command === 3011 ? result.recipients.filter((recipient) => recipient.skipped).length : 0;
+    return skipped ? `在线成员传输已确认，另有${skipped}名成员未投递；不自动补发，送达状态未知。` : "传输已确认 · 送达状态未知";
+  }
+
   function node(tag, className = "", text = "") {
     const element = document.createElement(tag);
     element.className = className;
@@ -127,9 +140,9 @@
     if (!item) {
       $("target-reason").textContent = reason;
     } else if (group) {
-      $("target-reason").textContent = `成员条目 ${item.members.length} · ${item.reason || reason || "后台已确认本机与该成员的群连接可用。"} 成员完整性以后台检查为准。`;
+      $("target-reason").textContent = `成员条目 ${item.members.length} · ${item.reason || reason || "向在线就绪成员投递；离线或未就绪成员列为未投递，不自动补发。"} 成员完整性以后台检查为准。`;
     } else {
-      $("target-reason").textContent = `${item.discovery} · ${item.reason || reason || "当前联系人在线，可向指定对端发送。"}`;
+      $("target-reason").textContent = `${item.discovery} · ${item.reason || reason || "当前联系人在线，可向该联系人发送。"}`;
     }
   }
 
@@ -149,7 +162,7 @@
     $("composer").setAttribute("aria-busy", String(Boolean(activeSend)));
     const lastRecord = selected ? records.findLast((record) => record.key === keyOf(selected)) : null;
     let notice = reason || "仅提交一次；传输确认不代表送达或已读。";
-    if (!reason && !text && lastRecord && !lastRecord.pending && !lastRecord.error && lastRecord.result && lastRecord.result.transport_acknowledged) notice = "传输已确认；送达状态未知。";
+    if (!reason && !text && lastRecord && onlineTransmissionConfirmed(lastRecord)) notice = confirmationSummary(lastRecord.result);
     if (!canAllocateID()) notice = "浏览器缺少 crypto.getRandomValues，无法生成安全请求 ID，请使用现代浏览器。";
     else if (activeSend) notice = "正在提交固定目标与正文，请勿重复操作。";
     else if (warning) notice = warning;
@@ -160,15 +173,11 @@
 
   function renderSession() {
     if (!state) return;
-    const subnet = state.discovery_mode === "subnet";
     const onlineCount = state.contacts.filter((contact) => contact.online).length;
-    const discovering = subnet && state.phase === "online" && onlineCount === 0;
+    const discovering = state.phase === "online" && onlineCount === 0;
     $("phase-badge").dataset.phase = reachable ? (discovering ? "starting" : state.phase) : "failed";
     $("phase-label").textContent = reachable ? (discovering ? "等待客户端" : phases[state.phase]) : "后台不可达";
-    $("discovery-label").textContent = subnet ? `局域网发现 · ${onlineCount} 人在线` : "单对端连接";
-    $("session-remote-label").textContent = subnet ? "发现网段" : "指定对端";
-    $("connection-intro").textContent = subnet ? "独立身份，在明确子网正常发现并连接多个客户端。不扫描地址，不自动重连。" : "独立身份，连接指定对端。配置来自后台启动命令。";
-    $("scope-description").textContent = `${subnet ? "支持多对端联系人和单聊。" : "当前仅支持单对端。"}群列表并非全部群；只支持本机与一个成员的群发送，多成员群投递尚未实现。暂不接收或显示对方聊天。关闭或隐藏页面不会使后台下线。`;
+    $("discovery-label").textContent = `局域网发现 · ${onlineCount} 人在线`;
     $("session-name").textContent = state.name || "—";
     $("session-id").textContent = state.own_user_id || "—";
     $("session-remote").textContent = state.remote || "—";
@@ -215,11 +224,13 @@
 
   function applyAcknowledgements() {
     let changed = false;
-    const fields = new Set(["transport_acknowledged", "business_acknowledged", "receipt_received"]);
+    const commands = { transport_acknowledged: 1004, business_acknowledged: 1005, receipt_received: 1006 };
     for (const record of records) {
-      if (!record.result || record.session !== sessionKey(state) || !record.result.message_id) continue;
+      // 群结果是所有路由的聚合事实，单个peer的3011事件不能确认整群。
+      if (!record.result || record.result.command !== 1004 || record.session !== sessionKey(state) || !record.result.message_id) continue;
       for (const event of state.events) {
-        if (event.message_id !== record.result.message_id || !fields.has(event.stage)) continue;
+        const command = commands[event.stage];
+        if (!command || event.command !== command || event.message_id !== record.result.message_id) continue;
         if (!record.result[event.stage]) {
           record.result[event.stage] = true;
           changed = true;
@@ -242,8 +253,8 @@
       const time = node("time", "", record.at.toLocaleTimeString("zh-CN", { hour12: false }));
       time.dateTime = record.at.toISOString();
       heading.append(node("strong", "", `发给 ${record.target.name}`), time);
-      const confirmed = !record.pending && !record.error && record.result && record.result.transport_acknowledged;
-      const status = record.pending ? "正在提交 · 尚无确认" : (confirmed ? "传输已确认 · 送达状态未知" : "结果未知 · 送达状态未知");
+      const confirmed = onlineTransmissionConfirmed(record);
+      const status = record.pending ? "正在提交 · 尚无确认" : (confirmed ? confirmationSummary(record.result) : "结果未知 · 送达状态未知");
       item.append(heading, node("div", "record-text", record.text), node("p", `record-status ${record.pending ? "pending" : confirmed ? "" : "unknown"}`, status));
       if (!record.pending && !confirmed) item.append(node("p", "record-warning", unknownNotice));
       if (record.error) item.append(node("p", "record-warning", record.error));
@@ -258,6 +269,13 @@
         lines.append(node("p", "mono", `命令 ${result.command} · Message ID ${result.message_id || "未返回"}`));
         lines.append(node("p", "", `已提交：${result.submitted ? "是" : "未确认"} · 传输确认：${result.transport_acknowledged ? "有" : "未确认"}`));
         lines.append(node("p", "", `业务 ACK：${result.business_acknowledged ? "有" : "未确认"} · 协议回执：${result.receipt_received ? "有" : "未确认"}`));
+        if (result.recipients) {
+          lines.append(node("p", "", "逐成员结果（跳过成员未投递，不离线存储、不自动补发；全部成员确认才表示整群传输已确认）："));
+          for (const recipient of result.recipients) {
+            lines.append(node("p", "mono recipient-result", `成员 ${recipient.user_id} · 连接 ${recipient.peer_index} · skipped：${recipient.skipped ? "true（未投递）" : "false"} · 已提交：${recipient.submitted ? "是" : "否"} · 传输 ACK：${recipient.transport_acknowledged ? "有" : "未确认"} · 原因/错误：${recipient.error || "无"}`));
+          }
+          if (!confirmed && result.recipients.some((recipient) => recipient.submitted)) lines.append(node("p", "record-warning", "已有成员提交，请先确认逐成员结果，勿向整群重复发送。"));
+        }
       } else {
         lines.append(node("p", "", "后台尚未返回结果，不能判断是否提交。"));
       }
@@ -385,7 +403,7 @@
     } finally {
       record.pending = false;
       activeSend = null;
-      const confirmed = !record.error && record.result && record.result.transport_acknowledged;
+      const confirmed = onlineTransmissionConfirmed(record);
       if (confirmed) {
         // 只清除本次已确认的原始草稿，不碰其他目标或随后编辑的新正文。
         if (drafts.get(record.key) === text) drafts.delete(record.key);

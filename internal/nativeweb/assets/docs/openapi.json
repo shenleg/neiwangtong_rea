@@ -246,7 +246,7 @@
         ],
         "operationId": "sendGroup",
         "summary": "发送一条真实群聊消息（3011）",
-        "description": "group_id 与 name 必须且只能提供一个非空字符串。拒绝 user_id、调用方 request_id、其他未知字段、重复字段、非字符串、null、尾随 JSON、非法 UTF-8 及超限输入。当前仅支持完整成员恰为本机与一个已连接成员的群，不支持多成员群投递，不主动入群。每次调用由服务端生成新 request_id，不自动重试，不保证跨 HTTP 请求幂等。实际换行原样保留，不解释字面 \\n。失败也可能已提交，delivery 仍为 unknown，不能自动补发。",
+        "description": "group_id 与 name 必须且只能提供一个非空字符串。拒绝 user_id、调用方 request_id、其他未知字段、重复字段、非字符串、null、尾随 JSON、非法 UTF-8 及超限输入。发送前须已同步最新完整成员且本机在群内；按用户选择向在线可用成员投递，离线、未 READY 或不支持群消息的成员标记 skipped=true、未投递，不阻断其他成员，不要求每个成员重复提供群快照。不离线存储、不自动补发。所有可用路由共用一个 MSG_ID、正文 GUID 和同一3011，每路由最多一次应用提交，并发等待结果。至少一个可用成员且全部可用路由传输确认时返回200；有跳过成员时顶层 transport_acknowledged 仍为false。实际路由失败返回502；Host发现全体不可用也返回502，公开接口预检发现全员未就绪则先返回503，均不分配 MSG_ID、不调用 Queue。群版本变更或日志失败仍返回错误，不补发。不主动入群。每次调用由服务端生成新 request_id，不自动重试，不保证跨 HTTP 请求幂等。实际换行原样保留，不解释字面 \\n。失败也可能已提交，delivery 仍为 unknown，不能自动补发。",
         "requestBody": {
           "required": true,
           "content": {
@@ -263,7 +263,43 @@
         },
         "responses": {
           "200": {
-            "$ref": "#/components/responses/Submitted"
+            "description": "至少一个在线可用成员，且所有可用路由传输确认；跳过成员未投递，因此示例顶层ACK仍false，送达未知。仅合成示例，不是多成员真实验收。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendResponse"
+                },
+                "example": {
+                  "request_id": "synthetic-group-request-001",
+                  "command": 3011,
+                  "message_id": "2",
+                  "submitted": true,
+                  "transport_acknowledged": false,
+                  "business_acknowledged": false,
+                  "receipt_received": false,
+                  "delivery": "unknown",
+                  "recipients": [
+                    {
+                      "user_id": "synthetic-user-001",
+                      "peer_index": 1,
+                      "skipped": false,
+                      "submitted": true,
+                      "transport_acknowledged": true,
+                      "error": ""
+                    },
+                    {
+                      "user_id": "synthetic-user-002",
+                      "peer_index": 0,
+                      "skipped": true,
+                      "submitted": false,
+                      "transport_acknowledged": false,
+                      "error": "成员离线，连接未就绪"
+                    }
+                  ],
+                  "error": ""
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/InvalidSend"
@@ -272,7 +308,7 @@
             "$ref": "#/components/responses/UnknownSendTarget"
           },
           "409": {
-            "description": "名称歧义时返回所有同名群；当前群投递不支持时返回 error，不发送。",
+            "description": "名称歧义时返回所有同名群。单个成员离线不会阻断其他可用成员；没有就绪成员时在预检阶段返回503。",
             "content": {
               "application/json": {
                 "schema": {
@@ -292,7 +328,43 @@
             "$ref": "#/components/responses/SendUnavailable"
           },
           "502": {
-            "$ref": "#/components/responses/ProtocolFailure"
+            "description": "实际可用路由提交或确认失败，仍保留逐成员事实；Host检查发现全体不可用时返回502，所有成员skipped，不分配MSG_ID、不Queue。公开接口若预检已发现全员未就绪则先返回503。不自动补发，不得重复发送整群。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendResponse"
+                },
+                "example": {
+                  "request_id": "synthetic-group-request-001",
+                  "command": 3011,
+                  "message_id": "2",
+                  "submitted": true,
+                  "transport_acknowledged": false,
+                  "business_acknowledged": false,
+                  "receipt_received": false,
+                  "delivery": "unknown",
+                  "recipients": [
+                    {
+                      "user_id": "synthetic-user-001",
+                      "peer_index": 1,
+                      "skipped": false,
+                      "submitted": true,
+                      "transport_acknowledged": true,
+                      "error": ""
+                    },
+                    {
+                      "user_id": "synthetic-user-002",
+                      "peer_index": 2,
+                      "skipped": false,
+                      "submitted": false,
+                      "transport_acknowledged": false,
+                      "error": "连接已断开"
+                    }
+                  ],
+                  "error": "部分成员路由失败，勿重复发送"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/SendIOFailure"
@@ -531,7 +603,7 @@
         ],
         "operationId": "sendPageGroupMessage",
         "summary": "以调用方 request_id 提交一条真实群聊消息",
-        "description": "与原网页单聊使用同一后台会话及相同的请求标识去重规则，request_id 必需。不需要 X-NWT-Request。当前群聊仅支持完整成员恰为本机与一个已连接成员的群；不自动重试，不保证跨后台会话幂等。正文按 UTF-8 字节计限并保留实际换行，delivery 始终 unknown。",
+        "description": "与原网页单聊使用同一后台会话及相同的请求标识去重规则，request_id 必需。不需要 X-NWT-Request。发送前须已同步最新完整成员且本机在群内；按用户选择向在线可用成员投递，离线、未 READY 或不支持群消息的成员标记 skipped=true、未投递，不阻断其他成员，不要求每个成员重复提供群快照。不离线存储、不自动补发。所有可用路由共用一个 MSG_ID、正文 GUID 和同一3011，每路由最多一次应用提交，并发等待结果。至少一个可用成员且全部可用路由传输确认时返回200；有跳过成员时顶层 transport_acknowledged 仍为false。实际路由失败返回502；Host发现全体不可用也返回502，公开接口预检发现全员未就绪则先返回503，均不分配 MSG_ID、不调用 Queue。群版本变更或日志失败仍返回错误，不补发。不主动入群。不自动重试，不保证跨后台会话幂等。正文按 UTF-8 字节计限并保留实际换行，delivery 始终 unknown。",
         "requestBody": {
           "required": true,
           "content": {
@@ -549,7 +621,45 @@
         },
         "responses": {
           "200": {
-            "$ref": "#/components/responses/PageMessageResult"
+            "description": "至少一个在线可用成员，且所有可用路由传输确认；跳过成员未投递，因此示例顶层ACK仍false，送达未知。仅合成示例，不是多成员真实验收。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "request_id": "synthetic-group-request-001",
+                  "result": {
+                    "command": 3011,
+                    "message_id": "2",
+                    "submitted": true,
+                    "transport_acknowledged": false,
+                    "business_acknowledged": false,
+                    "receipt_received": false,
+                    "delivery": "unknown",
+                    "recipients": [
+                      {
+                        "user_id": "synthetic-user-001",
+                        "peer_index": 1,
+                        "skipped": false,
+                        "submitted": true,
+                        "transport_acknowledged": true,
+                        "error": ""
+                      },
+                      {
+                        "user_id": "synthetic-user-002",
+                        "peer_index": 0,
+                        "skipped": true,
+                        "submitted": false,
+                        "transport_acknowledged": false,
+                        "error": "成员离线，连接未就绪"
+                      }
+                    ]
+                  },
+                  "error": ""
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/PageInvalidMessage"
@@ -561,7 +671,45 @@
             "$ref": "#/components/responses/PageInvalidContent"
           },
           "502": {
-            "$ref": "#/components/responses/PageProtocolFailure"
+            "description": "实际可用路由提交或确认失败，仍保留逐成员事实；Host检查发现全体不可用时返回502，所有成员skipped，不分配MSG_ID、不Queue。公开接口若预检已发现全员未就绪则先返回503。不自动补发，不得重复发送整群。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "request_id": "synthetic-group-request-001",
+                  "result": {
+                    "command": 3011,
+                    "message_id": "2",
+                    "submitted": true,
+                    "transport_acknowledged": false,
+                    "business_acknowledged": false,
+                    "receipt_received": false,
+                    "delivery": "unknown",
+                    "recipients": [
+                      {
+                        "user_id": "synthetic-user-001",
+                        "peer_index": 1,
+                        "skipped": false,
+                        "submitted": true,
+                        "transport_acknowledged": true,
+                        "error": ""
+                      },
+                      {
+                        "user_id": "synthetic-user-002",
+                        "peer_index": 2,
+                        "skipped": false,
+                        "submitted": false,
+                        "transport_acknowledged": false,
+                        "error": "连接已断开"
+                      }
+                    ]
+                  },
+                  "error": "部分成员路由失败，勿重复发送"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/PageIOFailure"
@@ -685,7 +833,7 @@
         }
       },
       "ProtocolFailure": {
-        "description": "原生协议提交错误，仍返回本次 request_id、message_id、submitted 等事实，delivery=unknown，不能自动重试。",
+        "description": "原生协议提交错误，仍返回本次 request_id、message_id、submitted 及群 recipients 等事实；部分提交不可重发，delivery=unknown。",
         "content": {
           "application/json": {
             "schema": {
@@ -759,7 +907,7 @@
         }
       },
       "PageProtocolFailure": {
-        "description": "原生提交失败；仍保留原 request_id、结果内 message_id、submitted 和 unknown，不能推断未发送。",
+        "description": "原生提交失败；保留原 request_id、结果内 message_id、submitted 及群 recipients，不能推断未发送，部分提交不可重发。",
         "content": {
           "application/json": {
             "schema": {
@@ -907,10 +1055,9 @@
       "DiscoveryMode": {
         "type": "string",
         "enum": [
-          "single_peer",
           "subnet"
         ],
-        "description": "显式单对端或子网正常发现模式。"
+        "description": "子网正常发现模式，固定为 subnet。"
       },
       "ContactView": {
         "type": "object",
@@ -1002,12 +1149,13 @@
             "description": "已确认的完整成员 ID 快照，不从历史成员猜测当前群。",
             "example": [
               "synthetic-own-001",
-              "synthetic-user-001"
+              "synthetic-user-001",
+              "synthetic-user-002"
             ]
           },
           "sendable": {
             "type": "boolean",
-            "description": "完整成员恰为本机与一个已连接成员且后台就绪时才可发送；不支持多成员群投递。"
+            "description": "已同步最新完整成员且本机在群内，至少一个非己成员连接 READY 且支持群消息时可发送；其余成员列为未投递，不离线存储、不自动补发，不要求每个成员重复提供群快照。"
           },
           "reason": {
             "type": "string",
@@ -1345,24 +1493,24 @@
           },
           "message_id": {
             "type": "string",
-            "description": "原生消息编号；提交前失败时可为空。",
+            "description": "本次原生消息编号；群发送所有路由共用此编号和同一正文 GUID，提交前错误可为空。",
             "example": "1"
           },
           "submitted": {
             "type": "boolean",
-            "description": "本次原生消息是否已提交；不等于对方收到。"
+            "description": "单聊表示 Queue 接受；群聊表示任一成员路由的 Queue 接受，不代表全部成员已提交或送达。"
           },
           "transport_acknowledged": {
             "type": "boolean",
-            "description": "是否观察到传输确认，不等于独立接收。"
+            "description": "单聊表示传输确认；群聊仅在完整名单中的全部非己成员均获得传输 ACK 时为 true，有 skipped 成员时仍为 false；HTTP200只要求至少一个可用成员且全部可用路由确认，不表示整群确认。"
           },
           "business_acknowledged": {
             "type": "boolean",
-            "description": "是否观察到匹配的业务 ACK；不称为已读。"
+            "description": "单聊表示匹配的业务 ACK；群3011恒为 false，不表示已读。"
           },
           "receipt_received": {
             "type": "boolean",
-            "description": "是否观察到匹配的协议回执；不称为已读或独立送达。"
+            "description": "单聊表示匹配的协议回执；群3011恒为 false，不表示独立送达。"
           },
           "delivery": {
             "type": "string",
@@ -1374,6 +1522,14 @@
           "error": {
             "type": "string",
             "description": "可选错误说明；非空也不能丢弃已提交事实。"
+          },
+          "recipients": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/RecipientResult"
+            },
+            "description": "群发送完整非己成员的逐成员结果，包含计划时跳过的成员；全体不可用时也可全部为 skipped。群快照等计划前检查失败或单聊时省略；非2xx仍保留成员提交、ACK及错误，部分提交不能重发。"
           }
         }
       },
@@ -1454,8 +1610,8 @@
           },
           "remote": {
             "type": "string",
-            "description": "single_peer 时为配置的 IPv4:port；subnet 时为发现子网 CIDR。",
-            "example": "192.0.2.10:9011"
+            "description": "发现子网 CIDR。",
+            "example": "192.0.2.0/24"
           },
           "discovery_mode": {
             "$ref": "#/components/schemas/DiscoveryMode"
@@ -1648,23 +1804,23 @@
           },
           "message_id": {
             "type": "string",
-            "description": "本次原生消息编号，提交前错误可为空。"
+            "description": "本次原生消息编号；群发送所有路由共用此编号和同一正文 GUID，提交前错误可为空。"
           },
           "submitted": {
             "type": "boolean",
-            "description": "是否已提交，不等于独立接收。"
+            "description": "单聊表示 Queue 接受；群聊表示任一成员路由的 Queue 接受，不代表全部成员已提交或送达。"
           },
           "transport_acknowledged": {
             "type": "boolean",
-            "description": "是否收到传输确认。"
+            "description": "单聊表示传输确认；群聊仅在完整名单中的全部非己成员均获得传输 ACK 时为 true，有 skipped 成员时仍为 false；HTTP200只要求至少一个可用成员且全部可用路由确认，不表示整群确认。"
           },
           "business_acknowledged": {
             "type": "boolean",
-            "description": "是否收到匹配的业务 ACK，不表示已读。"
+            "description": "单聊表示匹配的业务 ACK；群3011恒为 false，不表示已读。"
           },
           "receipt_received": {
             "type": "boolean",
-            "description": "是否收到匹配的协议回执，不表示独立送达。"
+            "description": "单聊表示匹配的协议回执；群3011恒为 false，不表示独立送达。"
           },
           "delivery": {
             "type": "string",
@@ -1672,6 +1828,14 @@
               "unknown"
             ],
             "description": "始终未知。"
+          },
+          "recipients": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/RecipientResult"
+            },
+            "description": "群发送完整非己成员的逐成员结果，包含计划时跳过的成员；全体不可用时也可全部为 skipped。群快照等计划前检查失败或单聊时省略；非2xx仍保留成员提交、ACK及错误，部分提交不能重发。"
           }
         }
       },
@@ -1708,6 +1872,48 @@
             "minLength": 1,
             "description": "本次上线显示名称。保留有效名称的原始空格，不截断或自动替换。",
             "example": "自定义网关名称"
+          }
+        }
+      },
+      "RecipientResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "user_id",
+          "peer_index",
+          "skipped",
+          "submitted",
+          "transport_acknowledged",
+          "error"
+        ],
+        "description": "本次群发送中一个非己成员的计划与传输结果；跳过不代表路由失败或独立接收。",
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "description": "原始成员身份 ID。",
+            "example": "synthetic-user-001"
+          },
+          "peer_index": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535,
+            "description": "本次 Host 内部连接序号，不是成员 ID；没有就绪连接时为0。"
+          },
+          "skipped": {
+            "type": "boolean",
+            "description": "始终输出。计划时无就绪连接或不支持群消息时为true，submitted与transport_acknowledged均为false，error说明未投递原因；不离线存储、不自动补发。"
+          },
+          "submitted": {
+            "type": "boolean",
+            "description": "该成员路由的 Queue 是否接受本次消息；每路由最多一次应用提交。"
+          },
+          "transport_acknowledged": {
+            "type": "boolean",
+            "description": "该成员路由是否获得传输 ACK，不表示送达或已读。"
+          },
+          "error": {
+            "type": "string",
+            "description": "该成员的错误；无错误时为空字符串，始终输出。错误不能抹去已提交事实。"
           }
         }
       }

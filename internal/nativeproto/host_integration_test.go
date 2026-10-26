@@ -159,7 +159,7 @@ func TestHostRoutesThreeDistinctBodies(t *testing.T) {
 	}
 }
 
-// TestHostTwoMemberGroupAndInvalidation 验证二成员群按完整成员路由、多成员群拒绝，以及一peer失效后不能从另一peer旧快照复活群。
+// TestHostTwoMemberGroupAndInvalidation 验证双人/多人群按完整成员路由，以及一peer失效后不能从另一peer旧快照复活群。
 func TestHostTwoMemberGroupAndInvalidation(t *testing.T) {
 	messages := make(chan hostObservedText, 4)
 	configure := func(cfg *ClientConfig) {
@@ -204,8 +204,16 @@ func TestHostTwoMemberGroupAndInvalidation(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		awaitResidentEvent(t, run.events, "group_synchronized", "")
 	}
-	if result, err := run.host.SendGroup(context.Background(), "multi-member-group", "不得部分发送"); err == nil || result.Submitted {
-		t.Fatal("多成员群被提交")
+	if result, err := run.host.SendGroup(context.Background(), "multi-member-group", "多人群完整正文"); err != nil || !result.TransportAcknowledged || len(result.Recipients) != 2 {
+		t.Fatalf("多人群投递失败：%+v %v", result, err)
+	}
+	seen := make(map[int]bool)
+	for i := 0; i < 2; i++ {
+		message := <-messages
+		if seen[message.peer] || message.group != "multi-member-group" || message.text != "多人群完整正文" {
+			t.Fatalf("多人群目标或正文错误：%+v", message)
+		}
+		seen[message.peer] = true
 	}
 	text := "二成员群完整正文\n仅peer0接收"
 	if result, err := run.host.SendGroup(context.Background(), "synthetic-group", text); err != nil || !result.TransportAcknowledged {

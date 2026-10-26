@@ -1,4 +1,4 @@
-// 本文件提供共享Host的深拷贝快照与原始身份发送路由；目录不是在线证明，群消息仅支持本机加一个在线成员。
+// 本文件提供共享Host的深拷贝快照与单聊原始身份路由；目录条目不是在线证明。
 package nativeproto
 
 import (
@@ -55,50 +55,6 @@ func (h *Host) SendUser(ctx context.Context, id, text string) (ChatResult, error
 		return unsent, err
 	}
 	return peer.client.SendUser(ctx, id, text)
-}
-
-// SendGroup 仅向最新完整成员恰为本机加一个在线peer的群提交text，使用该peer的Client.SendGroup，不执行多成员fanout。
-// 未同步、成员失效、包含其他成员、所选peer缺少相同版本资料、取消及发送失败均明确返回错误，不部分投递或重提。
-func (h *Host) SendGroup(ctx context.Context, id, text string) (ChatResult, error) {
-	unsent := ChatResult{Command: CommandGroupMessage, Delivery: "unknown"}
-	if err := ctx.Err(); err != nil {
-		return unsent, err
-	}
-	h.mu.Lock()
-	group, ok := h.groups[id]
-	if !ok || group.invalid || len(group.info.Members) != 2 {
-		h.mu.Unlock()
-		return unsent, fmt.Errorf("群未同步完整有效的二成员资料；不支持多成员群投递")
-	}
-	own, remote := false, ""
-	for _, member := range group.info.Members {
-		if member == h.config.Client.Node.UserID {
-			own = true
-		} else {
-			remote = member
-		}
-	}
-	if !own || remote == "" {
-		h.mu.Unlock()
-		return unsent, fmt.Errorf("群完整成员必须恰为本机和一个在线对端")
-	}
-	peer, err := h.onlinePeer(remote)
-	if err != nil {
-		h.mu.Unlock()
-		return unsent, err
-	}
-	matched := false
-	for _, current := range peer.client.Snapshot().Groups {
-		if current.GroupID == id && current.UserVersion == group.info.UserVersion && current.InfoVersion == group.info.InfoVersion && hostSameMembers(current.Members, group.info.Members) {
-			matched = true
-			break
-		}
-	}
-	h.mu.Unlock()
-	if !matched {
-		return unsent, fmt.Errorf("目标peer没有与Host相同版本的完整群成员资料")
-	}
-	return peer.client.SendGroup(ctx, id, text)
 }
 
 // onlinePeer在Host.mu保护下查找已验证原始身份；调用方不能把目录条目或发现包当作READY证据。

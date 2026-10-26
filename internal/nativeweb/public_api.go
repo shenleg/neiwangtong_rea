@@ -166,11 +166,7 @@ func sendPublicMessage(w http.ResponseWriter, r *http.Request, manager *Manager,
 		return
 	}
 	if kind == "group" && !group.Sendable {
-		code := http.StatusServiceUnavailable
-		if len(group.Members) != 2 {
-			code = http.StatusConflict
-		}
-		writeError(w, code, fmt.Errorf("指定群当前不可发送：%s", group.Reason))
+		writeError(w, http.StatusServiceUnavailable, fmt.Errorf("指定群当前不可发送：%s", group.Reason))
 		return
 	}
 	// 对外接口沿用main的每次调用新请求语义；不会把两个HTTP请求合并，也不会重试未知结果。

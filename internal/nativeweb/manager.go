@@ -142,7 +142,7 @@ func (m *Manager) Start(name string) error {
 		return err
 	}
 	if err := log.write(map[string]any{"event": "reserved", "started_at": now, "name": config.Name,
-		"local": m.config.Local.String(), "remote": m.config.Remote.String(), "discover": m.config.Discover, "prefix": m.config.Prefix.String(), "session_duration_ms": m.config.SessionDuration.Milliseconds(), "delivery": "unknown"}); err != nil {
+		"local": m.config.Local.String(), "discovery_mode": "subnet", "prefix": m.config.Prefix.String(), "session_duration_ms": m.config.SessionDuration.Milliseconds(), "delivery": "unknown"}); err != nil {
 		return errors.Join(err, log.close())
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -252,13 +252,9 @@ func (m *Manager) State() State {
 		snapshot = m.current.client.Snapshot()
 	}
 	online := m.phase == "online" && snapshot.Online
-	state := State{Phase: m.phase, Name: m.config.Name, OwnUserID: snapshot.OwnUserID, Remote: m.config.Remote.String(),
-		Error: m.lastErr, Stage: m.stage, MaxTextBytes: nativeproto.MaxTextBytes,
+	state := State{Phase: m.phase, Name: m.config.Name, OwnUserID: snapshot.OwnUserID, Remote: m.config.Prefix.Masked().String(),
+		DiscoveryMode: "subnet", Error: m.lastErr, Stage: m.stage, MaxTextBytes: nativeproto.MaxTextBytes,
 		Contacts: []ContactView{}, Groups: []GroupView{}, Events: append([]nativeproto.ClientEvent{}, m.events...)}
-	state.DiscoveryMode = "single_peer"
-	if m.config.Discover {
-		state.DiscoveryMode, state.Remote = "subnet", m.config.Prefix.String()
-	}
 	for i := range state.Events {
 		if value := state.Events[i].MessageVersions; value != nil {
 			copy := *value
@@ -285,13 +281,7 @@ func (m *Manager) State() State {
 	}
 	for _, group := range snapshot.Groups {
 		group.Members = append([]string{}, group.Members...)
-		var groupPeer string
-		for _, member := range group.Members {
-			if member != snapshot.OwnUserID && slices.Contains(snapshot.OnlineUserIDs, member) {
-				groupPeer = member
-			}
-		}
-		reason := groupReason(snapshot.OwnUserID, groupPeer, group.Members)
+		reason := groupReason(snapshot.OwnUserID, snapshot.OnlineUserIDs, group.Members)
 		if !online {
 			reason = "后台尚未上线"
 		}
@@ -300,23 +290,23 @@ func (m *Manager) State() State {
 	return state
 }
 
-func groupReason(ownID, peerID string, members []string) string {
-	if len(members) != 2 {
-		return "当前群聊仅支持本机与一个已连接成员，尚未实现多成员群投递"
+func groupReason(ownID string, onlineIDs, members []string) string {
+	if len(members) < 2 {
+		return "群须包含本机及至少一个其他成员"
 	}
-	own, peer := false, false
+	own, available := false, false
 	for _, member := range members {
-		switch member {
-		case ownID:
+		if member == ownID {
 			own = true
-		case peerID:
-			peer = true
-		default:
-			return "群成员的协议连接尚未就绪"
+			continue
 		}
+		available = available || slices.Contains(onlineIDs, member)
 	}
-	if !own || !peer {
-		return "群成员未包含本机及当前对端"
+	if !own {
+		return "群成员未包含本机"
+	}
+	if !available {
+		return "群内没有已就绪的在线成员"
 	}
 	return ""
 }
@@ -353,7 +343,7 @@ func (m *Manager) Send(ctx context.Context, requestID string, request nativeprot
 			}
 			select {
 			case <-previous.done:
-				return previous.response, previous.status
+				return previous.response.clone(), previous.status
 			case <-ctx.Done():
 				response.Error = "请求仍由后台处理，请用相同request_id查询结果，不要生成新请求补发"
 				return response, http.StatusRequestTimeout
@@ -407,7 +397,13 @@ func (m *Manager) Send(ctx context.Context, requestID string, request nativeprot
 	}
 	op.response, op.status = response, status
 	close(op.done)
-	return response, status
+	return response.clone(), status
+}
+
+// clone 隔离逐成员结果切片，避免Go调用者修改已缓存的请求结果；不产生I/O或错误。
+func (r MessageResponse) clone() MessageResponse {
+	r.Result.Recipients = append([]nativeproto.GroupRecipientResult(nil), r.Result.Recipients...)
+	return r
 }
 
 func (m *Manager) fail(run *running, err error) {

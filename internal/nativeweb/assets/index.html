@@ -18,7 +18,7 @@
         <span class="brand-mark" aria-hidden="true">n<span>·</span></span>
         <div><h1>内网通<span class="brand-divider">/</span><span class="brand-subtitle">独立聊天</span></h1><p>简单连接，认真沟通。</p></div>
       </div>
-      <div class="header-status"><span id="discovery-label" class="single-peer">单对端连接</span><span id="phase-badge" class="phase-badge" data-phase="offline"><span class="status-dot" aria-hidden="true"></span><span id="phase-label">正在读取状态</span></span></div>
+      <div class="header-status"><span id="discovery-label" class="discovery-label">局域网发现 · 0 人在线</span><span id="phase-badge" class="phase-badge" data-phase="offline"><span class="status-dot" aria-hidden="true"></span><span id="phase-label">正在读取状态</span></span></div>
     </header>
 
     <div class="workspace">
@@ -61,8 +61,8 @@
         <details class="connection-details" open>
           <summary><span>后台连接</span><span class="eyebrow">SESSION</span></summary>
           <div class="connection-body">
-            <p id="connection-intro" class="connection-intro">独立身份，连接指定对端。配置来自后台启动命令。</p>
-            <dl class="connection-fields"><div><dt>本机名称</dt><dd id="session-name">—</dd></div><div><dt>本机 ID</dt><dd id="session-id" class="mono">—</dd></div><div><dt id="session-remote-label">指定对端</dt><dd id="session-remote" class="mono">—</dd></div><div><dt>启动时间</dt><dd id="session-started">—</dd></div><div><dt>当前阶段</dt><dd id="session-stage" class="mono">—</dd></div></dl>
+            <p id="connection-intro" class="connection-intro">独立身份，在明确子网正常发现并连接多个客户端。不扫描地址，不自动重连。</p>
+            <dl class="connection-fields"><div><dt>本机名称</dt><dd id="session-name">—</dd></div><div><dt>本机 ID</dt><dd id="session-id" class="mono">—</dd></div><div><dt id="session-remote-label">发现子网</dt><dd id="session-remote" class="mono">—</dd></div><div><dt>启动时间</dt><dd id="session-started">—</dd></div><div><dt>当前阶段</dt><dd id="session-stage" class="mono">—</dd></div></dl>
             <div class="node-name-field"><label for="node-name">上线名称</label><input id="node-name" type="text" placeholder="例如：办公消息网关" autocomplete="off" aria-describedby="node-name-hint" disabled><p id="node-name-hint">离线时可修改；只改显示名称，不更换本机身份。</p></div>
             <div class="session-actions"><button id="start-button" class="button primary" type="button" disabled>上线</button><button id="stop-button" class="button secondary" type="button" disabled>下线</button></div>
             <button id="refresh-button" class="refresh-button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 8a7 7 0 0 1 12-2l2 3M4 15l2 3a7 7 0 0 0 12-2"></path></svg><span>刷新状态</span><span id="last-refresh">每 2 秒更新</span></button>
@@ -71,7 +71,7 @@
           </div>
         </details>
         <section class="stages" aria-labelledby="stages-heading"><div class="section-heading"><h3 id="stages-heading">阶段记录</h3><span>后台事件</span></div><p id="events-empty" class="events-empty">尚无阶段记录</p><ol id="stage-list" class="stage-list" aria-label="后台阶段记录"></ol></section>
-        <div class="scope-note"><span class="scope-marker" aria-hidden="true"></span><p id="scope-description">当前仅支持单对端。群列表并非全部群；多成员群暂不可发送，具体原因以后台检查为准。暂不接收或显示对方聊天。关闭或隐藏页面不会使后台下线。</p></div>
+        <div class="scope-note"><span class="scope-marker" aria-hidden="true"></span><p id="scope-description">支持多对端联系人、单聊和多成员群发送。群列表并非全部群；发送前须同步最新完整成员，向在线就绪成员投递，离线或未READY成员列为未投递；至少一名成员可用才启用发送。不离线存储、不自动补发。部分提交后请先确认，勿重复发送。暂不接收或显示对方聊天。关闭或隐藏页面不会使后台下线。</p></div>
       </aside>
     </div>
     <footer class="app-footer"><span>内网通 · 独立 Web 客户端 · <a href="/docs">Swagger API 文档</a></span><span>仅主动发送，不自动重发</span></footer>

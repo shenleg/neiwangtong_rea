@@ -17,6 +17,7 @@ const (
 type chatCall struct {
 	ctx     context.Context
 	request ChatRequest
+	group   *hostGroupDispatch
 	reply   chan chatReply
 }
 
@@ -55,7 +56,7 @@ func (c *Client) SendUser(ctx context.Context, userID, text string) (ChatResult,
 	if contact.Discovery != c.config.RemoteDiscovery {
 		return unsent, fmt.Errorf("选定联系人不是当前单对端连接，不自动建立其他连接")
 	}
-	return c.submitChatCall(ctx, request)
+	return c.submitChatCall(ctx, request, nil)
 }
 
 func chatCommand(request ChatRequest) uint32 {
@@ -65,9 +66,9 @@ func chatCommand(request ChatRequest) uint32 {
 	return CommandUserMessage
 }
 
-func (c *Client) submitChatCall(ctx context.Context, request ChatRequest) (ChatResult, error) {
+func (c *Client) submitChatCall(ctx context.Context, request ChatRequest, group *hostGroupDispatch) (ChatResult, error) {
 	unsent := ChatResult{Command: chatCommand(request), Delivery: "unknown"}
-	call := chatCall{ctx: ctx, request: request, reply: make(chan chatReply, 1)}
+	call := chatCall{ctx: ctx, request: request, group: group, reply: make(chan chatReply, 1)}
 	select {
 	case c.requests <- call:
 		// 交给Run后由它返回最终提交状态；不能因调用ctx先取消就丢掉MSG_ID和可能已经Queue的事实。
@@ -86,25 +87,38 @@ func (c *Client) handleChatCall(runCtx context.Context, call chatCall) error {
 		call.reply <- chatReply{result: unsent, err: err}
 		return nil
 	}
-	if call.request.GroupID != "" {
-		if err := c.selectGroup(call.request.GroupID); err != nil {
+	var chat *preparedChat
+	var result *ChatResult
+	if call.group != nil {
+		// Host已检查完整路由；此处只在当前连接的Run中复核计划仍有效，不另生成消息ID或正文GUID。
+		if err := call.group.validate(c); err != nil {
 			call.reply <- chatReply{result: unsent, err: err}
 			return nil
 		}
-	} else if call.request.UserID != c.remoteNode.UserID {
-		call.reply <- chatReply{result: unsent, err: fmt.Errorf("当前连接身份与指定联系人不一致")}
-		return nil
-	}
-	chat, result, err := prepareChat(call.request, c.config.Transport.MaxMessageBytes)
-	if err != nil {
-		call.reply <- chatReply{result: unsent, err: err}
-		return nil
+		chat = call.group.chat
+		result = &ChatResult{Command: CommandGroupMessage, MessageID: call.group.messageID, Delivery: "unknown"}
+	} else {
+		if call.request.GroupID != "" {
+			if err := c.selectGroup(call.request.GroupID); err != nil {
+				call.reply <- chatReply{result: unsent, err: err}
+				return nil
+			}
+		} else if call.request.UserID != c.remoteNode.UserID {
+			call.reply <- chatReply{result: unsent, err: fmt.Errorf("当前连接身份与指定联系人不一致")}
+			return nil
+		}
+		var err error
+		chat, result, err = prepareChat(call.request, c.config.Transport.MaxMessageBytes)
+		if err != nil {
+			call.reply <- chatReply{result: unsent, err: err}
+			return nil
+		}
 	}
 	ctx, cancel := context.WithCancel(runCtx)
 	stop := context.AfterFunc(call.ctx, cancel)
 	defer stop()
 	defer cancel()
-	err = c.sendPreparedChat(ctx, chat, result)
+	err := c.sendPreparedChat(ctx, chat, result)
 	call.reply <- chatReply{result: *result, err: err}
 	if err != nil && !result.Submitted && ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 		return nil // 请求在Queue前取消不会损坏会话；已Queue后的取消必须停止，保留未知结果。

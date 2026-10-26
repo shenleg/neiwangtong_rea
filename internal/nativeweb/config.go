@@ -16,16 +16,14 @@ import (
 	"neiwangtong-gateway/internal/nativeproto"
 )
 
-// Config 指定独立节点的身份目录、本机公告及发现方式；默认单对端，Discover显式启用本子网广播和多对端。
+// Config 指定独立节点的身份目录、本机公告及子网范围；上线时自动发现并连接本子网客户端。
 type Config struct {
 	Local           netip.Addr
 	Prefix          netip.Prefix
-	Remote          netip.AddrPort
 	Name            string
 	DataDir         string
 	DiscoveryPort   uint16
 	ENetPort        uint16
-	Discover        bool
 	SessionDuration time.Duration
 }
 
@@ -33,13 +31,6 @@ type Config struct {
 func (c Config) Validate() error {
 	if !unicast(c.Local) || !c.Prefix.IsValid() || !c.Prefix.Addr().Is4() || !c.Prefix.Contains(c.Local) || c.Prefix.Bits() > 30 {
 		return fmt.Errorf("须提供明确本机IPv4和包含它且不窄于/30的子网")
-	}
-	if c.Remote.IsValid() {
-		if !unicast(c.Remote.Addr()) || c.Remote.Port() == 0 || c.Remote.Addr() == c.Local || c.Remote.Addr() == broadcast(c.Prefix) || c.Discover && !c.Prefix.Contains(c.Remote.Addr()) {
-			return fmt.Errorf("指定发现对端须为不同于本机的IPv4单播地址")
-		}
-	} else if !c.Discover {
-		return fmt.Errorf("未启用局域网发现时须指定唯一IPv4单播发现对端")
 	}
 	if c.SessionDuration < 0 {
 		return fmt.Errorf("会话时限不得为负；0表示常驻")

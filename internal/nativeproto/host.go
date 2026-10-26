@@ -59,6 +59,7 @@ type Host struct {
 	identities      map[string]*hostPeer
 	directory       *Directory
 	groups          map[string]hostGroup
+	groupSends      chan struct{} // 串行群请求以保持各成员消息顺序，等待发送权时仍可响应取消。
 	callbackMu      sync.Mutex
 	observe         func(ClientEvent) error
 	origin          time.Time
@@ -110,7 +111,7 @@ func NewHost(discovery, conn *net.UDPConn, cfg HostConfig) (*Host, error) {
 		return nil, err
 	}
 	cfg.Seeds = append([]netip.AddrPort(nil), cfg.Seeds...)
-	h := &Host{config: cfg, discovery: discovery, conn: conn, local: local, peers: make(map[netip.AddrPort]*hostPeer), enet: make(map[netip.AddrPort]*hostPeer), identities: make(map[string]*hostPeer), groups: make(map[string]hostGroup), fatal: make(chan error, 1)}
+	h := &Host{config: cfg, discovery: discovery, conn: conn, local: local, groupSends: make(chan struct{}, 1), peers: make(map[netip.AddrPort]*hostPeer), enet: make(map[netip.AddrPort]*hostPeer), identities: make(map[string]*hostPeer), groups: make(map[string]hostGroup), fatal: make(chan error, 1)}
 	if cfg.Client.Contacts != nil {
 		h.directory = &Directory{ownID: cfg.Client.Node.UserID, contacts: cfg.Client.Contacts.ListContacts()}
 	}

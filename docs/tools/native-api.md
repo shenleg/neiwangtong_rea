@@ -6,7 +6,7 @@
 
 ## 1. 启动与文档
 
-沿用 [nwtweb 启动参数](nwtweb.md)。默认只启动 HTTP，协议仍离线；可使用网页或会话接口明确上线，启动即上线则另行显式指定 `-online`。API 与网页共用一个后台身份、联系人快照及连接，不会每发一条消息重新握手。
+沿用 [nwtweb 启动参数](nwtweb.md)。默认只启动 HTTP，协议仍离线；可使用网页或会话接口明确上线，启动即上线则另行显式指定 `-online`。上线后自动发现所配置子网的客户端。API 与网页共用一个后台身份、联系人快照及各对端连接，不会每发一条消息重新握手。
 
 假设服务地址为 `http://127.0.0.1:8788`：
 
@@ -16,7 +16,7 @@
 
 官方 Swagger UI 5.34.0 的脚本、样式和许可证随 Go 二进制内嵌；无外部 CDN、Petstore、字体或在线校验请求，详细来源及哈希见 `internal/nativeweb/assets/swagger/SOURCE.txt`。访问文档只加载规范，不自动上线、不自动提交消息。`Try it out` 后明确点击 `Execute` 才调用接口。
 
-局域网仍须显式 `-lan -listen 私有IPv4:端口`。无鉴权也无 TLS，仅部署在受控内网；不要公开转发端口。旧进程不会因源码修改自行更新。
+Go程序和Compose默认监听 `0.0.0.0:8788`，本机或局域网通过 `http://实际宿主IP:8788` 访问，不能将 `0.0.0.0` 当作访问地址。可用 `-listen 私有IPv4:端口` 限定网卡，或 `-listen 127.0.0.1:8788` 仅供本机访问。启动时自动识别本机网络：Linux优先默认IPv4路由网卡的私有IPv4及真实掩码，没有合适默认网卡时仅接受唯一局域网IPv4；非Linux仅支持唯一私有IPv4自动识别。多IP有歧义时须用 `-local` 明确指定；裸IP读取对应网卡真实掩码，也可用CIDR或旧IP加 `-prefix` 显式覆盖。不猜 `/24`，识别过程不发探测包、不上线。当前无鉴权及TLS，Host/Origin检查仍保留；通配监听的Host按TCP连接实际到达的本机地址核对。Compose最短启动为 `docker compose up -d --build`，默认将 `./data` 挂到 `/data`；旧部署须继续挂原资料卷，不能改用空目录。完整参数与资料说明见[nwtweb部署说明](nwtweb.md#docker-compose-部署linux)。旧进程不会因源码修改自行更新。
 
 ## 2. 与远端 main 的对应关系
 
@@ -71,7 +71,7 @@
 
 群响应使用 `groups`，每条包含 `group_id`、`name`、`master_id`、`info_version`、`user_version`、`members`、`sendable`、`reason`。
 
-列表不是全部网络名册或全部已加入群。离线时仍可读取已知联系人；群只包含本次已同步快照，不从历史成员恢复可发送状态。当前群发送只支持完整成员恰为本机与一个已连接成员的群，不支持多成员投递，不主动入群。
+列表不是全部网络名册或全部已加入群。离线时仍可读取已知联系人；群只包含本次已同步快照，不从历史成员恢复可发送状态。共享Host发送前须有最新完整群成员快照且本机在群内；按用户选择向在线READY且支持群消息的成员投递，离线、未READY或能力不支持的成员列为skipped/未投递，不阻断其他成员，不离线存储、不自动补发。至少一个成员可用时sendable才为true，不要求每个成员重复提供群快照。不主动入群。旧单Client与实验CLI仍限双成员。
 
 ### 精确名称查询
 
@@ -133,10 +133,57 @@ curl http://127.0.0.1:8788/send/user \
 }
 ```
 
-- `submitted`：原生消息已进入本次Queue，不代表已显示。
-- `transport_acknowledged`：传输确认，不代表业务接收。
-- `business_acknowledged`、`receipt_received`：已观察到对应协议事件，不称为已读。
+- `submitted`：单聊表示Queue接受；群聊表示任一成员路由Queue接受，不代表全员提交或已显示。
+- `transport_acknowledged`：群聊仅完整名单全部非己成员传输ACK时为true，有skipped成员仍false；HTTP200只要求至少一个可用成员且所有可用路由确认，不能当成整群成功；不代表业务接收。
+- `business_acknowledged`、`receipt_received`：单聊表示对应协议事件；群3011恒为false，不称为已读。
+- `recipients`：群发送完整非己成员名单的逐成员事实，每项为 `{user_id, peer_index, skipped, submitted, transport_acknowledged, error}`，`skipped`及`error`始终输出，无错误时error为空字符串。计划时无就绪连接或能力不支持的成员skipped=true，submitted和transport_acknowledged均false，error说明原因；无就绪连接时peer_index=0。群快照等计划前检查失败及单聊时省略 `recipients`；全体不可用时可包含全体skipped。HTTP非2xx仍保留已经取得的逐成员事实。
 - `delivery`：始终 `unknown`，独立接收观察另外记录。
+
+群发送只生成一个MSG_ID和正文GUID，各可用路由发送同一3011，每路由最多一次应用提交，并发等待结果。至少一个可用成员且它们全部传输确认时HTTP200/error为空，即使跳过其他成员；实际路由失败时HTTP502并保留结果。公开接口预检发现群内全员未就绪时返回503；进入Host后发现全体不可用（例如都不支持群文本）则返回502。两者均不分配MSG_ID、不Queue，Host结果可包含全体skipped。群版本变更或日志失败仍返回错误，不补发。不离线存储、不自动补发。多成员群仅经合成/loopback验证，未完成真实验收；[历史双成员真实报告](../research/reports/native-protocol/native-group-confirmation-20261025.md)保持原范围。
+
+向在线成员投递、跳过离线成员的公开接口合成示例（HTTP 200；不是整群成功）：
+
+```json
+{
+  "request_id": "synthetic-group-request-001",
+  "command": 3011,
+  "message_id": "2",
+  "submitted": true,
+  "transport_acknowledged": false,
+  "business_acknowledged": false,
+  "receipt_received": false,
+  "delivery": "unknown",
+  "recipients": [
+    {"user_id":"synthetic-user-001","peer_index":1,"skipped":false,"submitted":true,"transport_acknowledged":true,"error":""},
+    {"user_id":"synthetic-user-002","peer_index":0,"skipped":true,"submitted":false,"transport_acknowledged":false,"error":"成员离线，连接未就绪"}
+  ],
+  "error": ""
+}
+```
+
+网页此时显示“在线成员传输已确认，另有1名成员未投递”，逐成员保留skipped和原因，并清除本次草稿；不离线存储、不自动补发。HTTP错误或实际路由失败则保留草稿。群事件不会把聚合结果改成已确认。
+
+部分失败的公开接口合成示例（HTTP 502；失败成员skipped=false）：
+
+```json
+{
+  "request_id": "synthetic-group-request-001",
+  "command": 3011,
+  "message_id": "2",
+  "submitted": true,
+  "transport_acknowledged": false,
+  "business_acknowledged": false,
+  "receipt_received": false,
+  "delivery": "unknown",
+  "recipients": [
+    {"user_id":"synthetic-user-001","peer_index":1,"skipped":false,"submitted":true,"transport_acknowledged":true,"error":""},
+    {"user_id":"synthetic-user-002","peer_index":2,"skipped":false,"submitted":false,"transport_acknowledged":false,"error":"连接已断开"}
+  ],
+  "error": "部分成员路由失败，勿重复发送"
+}
+```
+
+上例一个成员已提交，不能因另一个失败而重复发送整群。原网页接口将这些协议字段放在 `result` 内，保留同一请求标识的会话内去重；网页不会因单peer同编号3011事件把聚合ACK改为true。
 
 发送前先写入并Sync摘要，失败时不调用协议；受理后由后台管理发送，不因HTTP连接关闭而丢弃结果。提交后错误返回502时仍保留原请求标识、消息编号和 `submitted` 等事实，不能把错误当成“未发送”后补发。
 
@@ -145,11 +192,11 @@ curl http://127.0.0.1:8788/send/user \
 | 400 | JSON、目标选择、字段或正文非法 |
 | 403 | Host或浏览器来源不符；不是鉴权失败 |
 | 404 | 原始目标未知或名称未命中 |
-| 409 | 同名歧义，或群当前不能完整投递 |
+| 409 | 同名歧义；原网页接口还用于请求标识冲突等会话约束 |
 | 408 | 请求受理前取消 |
 | 415 | 写入请求不是 `application/json` |
-| 503 | 后台未就绪、目标离线或会话请求预算耗尽 |
-| 502 | 协议操作失败，结果可能已提交，继续保留原生事实 |
+| 503 | 后台未就绪、单聊目标离线、群内全员未就绪或会话请求预算耗尽 |
+| 502 | 实际路由失败或Host发现无可用群路由；无可用路由时不分配MSG_ID、不Queue，其余错误仍可能已提交，保留原生事实 |
 | 500 | 随机源或记录I/O错误；已经取得的提交事实不能丢弃 |
 
 ## 5. 原网页会话接口

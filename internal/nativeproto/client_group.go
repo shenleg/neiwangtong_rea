@@ -26,7 +26,7 @@ func (c *Client) SendGroup(ctx context.Context, groupID, text string) (ChatResul
 	if !c.config.GroupChat {
 		return unsent, fmt.Errorf("客户端未启用群同步与发送")
 	}
-	return c.submitChatCall(ctx, request)
+	return c.submitChatCall(ctx, request, nil)
 }
 
 func (c *Client) selectGroup(groupID string) error {

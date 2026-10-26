@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -133,9 +134,6 @@ func TestHTTPSameOriginProtection(t *testing.T) {
 	if manager.State().Phase != "offline" || fake.calls.Load() != 0 {
 		t.Fatal("跨站请求改变后台状态")
 	}
-	if _, err := NewHandler(manager, netip.MustParseAddrPort("0.0.0.0:8788")); err == nil {
-		t.Fatal("不允许无鉴权暴露到所有网卡")
-	}
 }
 
 // TestLANHasNoAuthentication 验证私有网卡的页面、Swagger和API无需凭据，忽略过期Authorization且保留跨站限制。
@@ -172,13 +170,80 @@ func TestLANHasNoAuthentication(t *testing.T) {
 	if response.Code != http.StatusForbidden {
 		t.Fatal("取消鉴权不应开放跨站调用")
 	}
-	for _, invalid := range []netip.AddrPort{netip.MustParseAddrPort("0.0.0.0:8788"), netip.MustParseAddrPort("8.8.8.8:8788")} {
+	for _, invalid := range []netip.AddrPort{netip.MustParseAddrPort("[::]:8788"), netip.MustParseAddrPort("8.8.8.8:8788")} {
 		if _, err := NewHandler(manager, invalid); err == nil {
-			t.Fatal("仍需明确绑定回环或私有地址")
+			t.Fatal("仅支持IPv4回环、私有或通配地址")
 		}
 	}
 	if manager.State().Phase != "offline" || fake.calls.Load() != 0 {
 		t.Fatal("无鉴权检查不应触发协议连接或发送")
+	}
+}
+
+// TestWildcardListenerHostAndOrigin 验证通配监听使用连接实际到达的本机地址检查Host，同源访问多网卡且仍拒绝错误Host或Origin。
+func TestWildcardListenerHostAndOrigin(t *testing.T) {
+	manager, fake := testManager(t)
+	handler, err := NewHandler(manager, netip.MustParseAddrPort("0.0.0.0:8788"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		local, host, origin, site string
+		want                      int
+	}{
+		{"10.1.1.30", "10.1.1.30:8788", "http://10.1.1.30:8788", "", 200},
+		{"192.168.50.10", "192.168.50.10:8788", "http://192.168.50.10:8788", "", 200},
+		{"127.0.0.1", "127.0.0.1:8788", "", "", 200},
+		{"127.0.0.1", "localhost:8788", "http://localhost:8788", "", 200},
+		{"10.1.1.30", "localhost:8788", "", "", 403},
+		{"10.1.1.30", "attacker.test:8788", "", "", 403},
+		{"10.1.1.30", "10.1.1.31:8788", "", "", 403},
+		{"10.1.1.30", "10.1.1.30:8789", "", "", 403},
+		{"10.1.1.30", "0.0.0.0:8788", "", "", 403},
+		{"10.1.1.30", "10.1.1.30:8788", "http://attacker.test", "", 403},
+		{"10.1.1.30", "10.1.1.30:8788", "null", "", 403},
+		{"10.1.1.30", "10.1.1.30:8788", "", "cross-site", 403},
+		{"", "10.1.1.30:8788", "", "", 403},
+	} {
+		request := httptest.NewRequest(http.MethodGet, "http://"+tc.host+"/api/state", nil)
+		if tc.local != "" {
+			request = request.WithContext(context.WithValue(request.Context(), http.LocalAddrContextKey, &net.TCPAddr{IP: net.ParseIP(tc.local), Port: 8788}))
+		}
+		request.Header.Set("Origin", tc.origin)
+		request.Header.Set("Sec-Fetch-Site", tc.site)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != tc.want {
+			t.Fatalf("local=%s host=%s origin=%s site=%s: %d %s", tc.local, tc.host, tc.origin, tc.site, response.Code, response.Body.String())
+		}
+	}
+	if manager.State().Phase != "offline" || fake.calls.Load() != 0 {
+		t.Fatal("监听方式不应触发协议上线或发送")
+	}
+}
+
+// TestWildcardHandlerUsesRealLocalAddress 验证真实HTTP服务提供的LocalAddrContext支持通配Handler，仅通过loopback读取页面及接口。
+func TestWildcardHandlerUsesRealLocalAddress(t *testing.T) {
+	manager, _ := testManager(t)
+	server := httptest.NewUnstartedServer(http.NotFoundHandler())
+	defer server.Close()
+	bound := server.Listener.Addr().(*net.TCPAddr).AddrPort()
+	handler, err := NewHandler(manager, netip.AddrPortFrom(netip.IPv4Unspecified(), bound.Port()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.Config.Handler = handler
+	server.Start()
+	for _, path := range []string{"/", "/api/state", "/contacts", "/groups", "/docs", "/openapi.json"} {
+		response, err := server.Client().Get(server.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, readErr := io.Copy(io.Discard, response.Body)
+		closeErr := response.Body.Close()
+		if readErr != nil || closeErr != nil || response.StatusCode != http.StatusOK {
+			t.Fatalf("%s: %d %v %v", path, response.StatusCode, readErr, closeErr)
+		}
 	}
 }
 

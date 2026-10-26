@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"net"
 	"net/http"
 	"net/netip"
 	"strconv"
@@ -21,15 +22,11 @@ import (
 //go:embed assets/index.html assets/app.css assets/app.js assets/docs/* assets/swagger/*
 var assets embed.FS
 
-// NewHandler 为manager创建无鉴权网页、公开API与Swagger文档；address须为实际监听的回环或私有IPv4端点。
+// NewHandler 为manager创建无鉴权网页、公开API与Swagger文档；address须为实际监听的回环、私有或0.0.0.0 IPv4端点。
 // 无网络或文件写入；监听地址、端口或内嵌文档无效时返回错误。Host/Origin限制跨站调用，不要求用户名、密码或token。
 func NewHandler(manager *Manager, address netip.AddrPort) (http.Handler, error) {
-	if !address.IsValid() || !address.Addr().Is4() || address.Port() == 0 || !(address.Addr().IsLoopback() || address.Addr().IsPrivate()) {
-		return nil, fmt.Errorf("网页须绑定明确的回环或私有IPv4地址及非零端口")
-	}
-	allowedHosts := map[string]bool{address.String(): true}
-	if address.Addr().IsLoopback() {
-		allowedHosts["localhost:"+strconv.Itoa(int(address.Port()))] = true
+	if !address.IsValid() || !address.Addr().Is4() || address.Port() == 0 || !(address.Addr().IsLoopback() || address.Addr().IsPrivate() || address.Addr().IsUnspecified()) {
+		return nil, fmt.Errorf("网页须绑定回环、私有或0.0.0.0 IPv4地址及非零端口")
 	}
 	mux := http.NewServeMux()
 	registerPublicAPI(mux, manager)
@@ -117,7 +114,23 @@ func NewHandler(manager *Manager, address netip.AddrPort) (http.Handler, error) 
 			stylePolicy += " 'unsafe-inline'" // Swagger UI通过React设置部分元素样式；仅放行文档样式，不开放内联脚本。
 		}
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src "+stylePolicy+"; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
-		if !allowedHosts[r.Host] || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+		local := address
+		if address.Addr().IsUnspecified() {
+			// 通配地址不是浏览器访问地址；使用当前TCP连接实际到达的本机IP，不信任Host或转发头来推断。
+			endpoint, ok := r.Context().Value(http.LocalAddrContextKey).(*net.TCPAddr)
+			if !ok {
+				writeError(w, http.StatusForbidden, fmt.Errorf("无法确认请求到达的本机地址"))
+				return
+			}
+			local = endpoint.AddrPort()
+			local = netip.AddrPortFrom(local.Addr().Unmap(), local.Port())
+			if !local.Addr().Is4() || local.Addr().IsUnspecified() || local.Port() != address.Port() {
+				writeError(w, http.StatusForbidden, fmt.Errorf("无效的本机HTTP端点"))
+				return
+			}
+		}
+		allowedHost := r.Host == local.String() || local.Addr().IsLoopback() && r.Host == "localhost:"+strconv.Itoa(int(local.Port()))
+		if !allowedHost || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
 			writeError(w, http.StatusForbidden, fmt.Errorf("不允许的Host或跨站请求"))
 			return
 		}

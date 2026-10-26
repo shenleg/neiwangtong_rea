@@ -19,12 +19,13 @@ import (
 )
 
 type fakeSession struct {
-	mu       sync.Mutex
-	snapshot nativeproto.ClientSnapshot
-	calls    atomic.Int32
-	block    chan struct{}
-	sendErr  error
-	requests []nativeproto.ChatRequest
+	mu         sync.Mutex
+	snapshot   nativeproto.ClientSnapshot
+	calls      atomic.Int32
+	block      chan struct{}
+	sendErr    error
+	requests   []nativeproto.ChatRequest
+	recipients []nativeproto.GroupRecipientResult
 }
 
 // Run 发布合成就绪事件并等待取消，返回正常退出；回调失败直接返回，不执行任何网络操作。
@@ -81,6 +82,10 @@ func (s *fakeSession) SendGroup(ctx context.Context, id, text string) (nativepro
 	s.mu.Unlock()
 	result, err := s.send(ctx)
 	result.Command = nativeproto.CommandGroupMessage
+	result.Recipients = append([]nativeproto.GroupRecipientResult(nil), s.recipients...)
+	for _, recipient := range result.Recipients {
+		result.TransportAcknowledged = result.TransportAcknowledged && recipient.TransportAcknowledged
+	}
 	return result, err
 }
 
@@ -88,13 +93,13 @@ func (s *fakeSession) SendGroup(ctx context.Context, id, text string) (nativepro
 func testManager(t *testing.T) (*Manager, *fakeSession) {
 	t.Helper()
 	config := Config{Local: netip.MustParseAddr("127.0.0.1"), Prefix: netip.MustParsePrefix("127.0.0.0/8"),
-		Remote: netip.MustParseAddrPort("127.0.0.2:9011"), Name: "合成Web节点", DataDir: t.TempDir(), DiscoveryPort: 9011, ENetPort: 9012}
+		Name: "合成Web节点", DataDir: t.TempDir(), DiscoveryPort: 9011, ENetPort: 9012}
 	manager, err := New(config)
 	if err != nil {
 		t.Fatal(err)
 	}
 	fake := &fakeSession{snapshot: nativeproto.ClientSnapshot{OwnUserID: "synthetic-own", Online: true, PeerUserID: "synthetic-peer", OnlineUserIDs: []string{"synthetic-peer"},
-		Contacts: []nativeproto.Contact{{UserID: "synthetic-peer", Name: "合成联系人", Discovery: config.Remote},
+		Contacts: []nativeproto.Contact{{UserID: "synthetic-peer", Name: "合成联系人", Discovery: netip.MustParseAddrPort("127.0.0.2:9011")},
 			{UserID: "other-peer", Name: "其他联系人", Discovery: netip.MustParseAddrPort("127.0.0.3:9011")}},
 		Groups: []nativeproto.GroupInfo{{GroupID: "group-two", Name: "双成员群", Members: []string{"synthetic-own", "synthetic-peer"}},
 			{GroupID: "group-three", Name: "多成员群", Members: []string{"synthetic-own", "synthetic-peer", "other-peer"}}}}}
@@ -125,14 +130,14 @@ func awaitPhase(t *testing.T, manager *Manager, phase string) State {
 // TestManagerLifecycleAndViews 验证关闭网页不参与后台生命周期，在线/成员限制及返回值复制不误报发送能力。
 func TestManagerLifecycleAndViews(t *testing.T) {
 	manager, _ := testManager(t)
-	if manager.State().Phase != "offline" {
-		t.Fatal("构造不应上线")
+	if state := manager.State(); state.Phase != "offline" || state.DiscoveryMode != "subnet" || state.Remote != "127.0.0.0/8" {
+		t.Fatalf("构造应保持离线并默认发现本子网：%+v", state)
 	}
 	if err := manager.Start(manager.State().Name); err != nil {
 		t.Fatal(err)
 	}
 	state := awaitPhase(t, manager, "online")
-	if !state.Contacts[0].Sendable || state.Contacts[1].Sendable || !state.Groups[0].Sendable || state.Groups[1].Sendable {
+	if !state.Contacts[0].Sendable || state.Contacts[1].Sendable || !state.Groups[0].Sendable || !state.Groups[1].Sendable {
 		t.Fatalf("目标能力错误：%+v", state)
 	}
 	state.Groups[0].Members[0] = "changed"
@@ -162,7 +167,6 @@ func TestManagerLifecycleAndViews(t *testing.T) {
 // TestAllThreeOnlineContactsAreVisible 回归Web不再用唯一PeerUserID判断在线，三个已就绪身份均可显示和选择。
 func TestAllThreeOnlineContactsAreVisible(t *testing.T) {
 	manager, fake := testManager(t)
-	manager.config.Discover = true
 	fake.mu.Lock()
 	fake.snapshot.PeerUserID = ""
 	fake.snapshot.OnlineUserIDs = []string{"synthetic-peer", "other-peer", "third-peer"}
@@ -180,12 +184,59 @@ func TestAllThreeOnlineContactsAreVisible(t *testing.T) {
 			t.Fatalf("已就绪联系人被误标离线：%+v", contact)
 		}
 	}
+	if !state.Groups[1].Sendable || state.Groups[1].Reason != "" {
+		t.Fatalf("成员全部在线的多人群仍被禁用：%+v", state.Groups[1])
+	}
 	fake.mu.Lock()
 	fake.snapshot.OnlineUserIDs = []string{"synthetic-peer", "third-peer"}
 	fake.mu.Unlock()
 	state = manager.State()
 	if state.Contacts[1].Online || !state.Contacts[0].Online || !state.Contacts[2].Online {
 		t.Fatalf("一人离线影响了其他人：%+v", state.Contacts)
+	}
+	if !state.Groups[1].Sendable || state.Groups[1].Reason != "" || !state.Groups[0].Sendable {
+		t.Fatalf("一个成员离线阻断了在线成员的群投递：%+v", state.Groups)
+	}
+	fake.mu.Lock()
+	fake.snapshot.OnlineUserIDs = []string{"third-peer"}
+	fake.mu.Unlock()
+	state = manager.State()
+	for _, group := range state.Groups {
+		if group.Sendable || !strings.Contains(group.Reason, "没有已就绪") {
+			t.Fatalf("无在线群成员时仍允许发送：%+v", group)
+		}
+	}
+}
+
+// TestGroupPartialResultDeduplication 验证多人群部分失败保留逐成员事实，重复请求不重发，返回切片不能污染缓存。
+func TestGroupPartialResultDeduplication(t *testing.T) {
+	manager, fake := testManager(t)
+	fake.sendErr = errors.New("synthetic partial group failure")
+	fake.recipients = []nativeproto.GroupRecipientResult{
+		{UserID: "synthetic-peer", PeerIndex: 1, Submitted: true, TransportAcknowledged: true},
+		{UserID: "other-peer", PeerIndex: 2, Submitted: true, Error: "synthetic transport timeout"},
+	}
+	if err := manager.Start(manager.State().Name); err != nil {
+		t.Fatal(err)
+	}
+	awaitPhase(t, manager, "online")
+	request := nativeproto.ChatRequest{GroupID: "group-three", Text: "多人群完整正文"}
+	first, status := manager.Send(context.Background(), "group-partial-result", request)
+	if status != http.StatusBadGateway || first.Error == "" || !first.Result.Submitted || first.Result.TransportAcknowledged || len(first.Result.Recipients) != 2 {
+		t.Fatalf("部分失败事实丢失：%d %+v", status, first)
+	}
+	first.Result.Recipients[0].UserID = "changed"
+	second, status := manager.Send(context.Background(), "group-partial-result", request)
+	if status != http.StatusBadGateway || fake.calls.Load() != 1 || second.Result.Recipients[0].UserID != "synthetic-peer" || !second.Result.Recipients[0].TransportAcknowledged || second.Result.Recipients[1].Error == "" {
+		t.Fatalf("重复请求重发或缓存被修改：%d %+v", status, second)
+	}
+	recorded := performRequest(testHandler(t, manager), http.MethodPost, "/api/messages/group", `{"request_id":"group-partial-result","group_id":"group-three","text":"多人群完整正文"}`)
+	var response MessageResponse
+	if err := json.Unmarshal(recorded.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if recorded.Code != http.StatusBadGateway || len(response.Result.Recipients) != 2 || !response.Result.Recipients[0].TransportAcknowledged || response.Result.TransportAcknowledged || fake.calls.Load() != 1 {
+		t.Fatalf("HTTP丢失逐成员事实或重复投递：%d %+v", recorded.Code, response)
 	}
 }
 
