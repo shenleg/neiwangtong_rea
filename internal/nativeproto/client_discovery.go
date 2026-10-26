@@ -13,7 +13,10 @@ func (c *Client) discover(ctx context.Context) (NodePacket, error) {
 	if err != nil {
 		return NodePacket{}, err
 	}
-	deadline := minTime(time.Now().Add(c.config.DiscoveryTimeout), c.origin.Add(c.config.Duration))
+	deadline := time.Now().Add(c.config.DiscoveryTimeout)
+	if c.config.Duration > 0 {
+		deadline = minTime(deadline, c.origin.Add(c.config.Duration))
+	}
 	if parent, ok := ctx.Deadline(); ok {
 		deadline = minTime(deadline, parent)
 	}

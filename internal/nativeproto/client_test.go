@@ -66,6 +66,10 @@ func TestClientBothRoles(t *testing.T) {
 			if result.Role != map[bool]string{true: "active", false: "passive"}[active] {
 				t.Fatal("wrong role")
 			}
+			contact, ok := client.Contact()
+			if !ok || contact.UserID != remoteNode.UserID || contact.Discovery != client.config.RemoteDiscovery || contact.Name == "" {
+				t.Fatalf("contact=%+v available=%v", contact, ok)
+			}
 			ready := false
 			for _, event := range stages {
 				if event.Stage == "protocol_ready" {
@@ -85,6 +89,12 @@ func TestClientBothRoles(t *testing.T) {
 // serveSyntheticNative 作为单个本机协议对端响应一次发现与握手，最后验证 QUIT 并正常关闭传输。
 // 返回第一处解析/I/O错误；不会自动重试应用控制消息，不创建额外连接。
 func serveSyntheticNative(ctx context.Context, discovery, conn *net.UDPConn, node NodePacket, localActive bool) error {
+	return serveSyntheticNativeWithHandler(ctx, discovery, conn, node, localActive, nil)
+}
+
+// serveSyntheticNativeWithHandler 复用上线fixture，并在双向READY后将其他业务交给handler；可返回一个响应或明确错误。
+// handler为nil时维持只接受控制消息；initial在双向READY后依次推送一次，供群同步测试使用，所有socket均为loopback。
+func serveSyntheticNativeWithHandler(ctx context.Context, discovery, conn *net.UDPConn, node NodePacket, localActive bool, handler func(Frame) (*Frame, error), initial ...Frame) error {
 	if err := discovery.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
 		return err
 	}
@@ -122,7 +132,7 @@ func serveSyntheticNative(ctx context.Context, discovery, conn *net.UDPConn, nod
 		return err
 	}
 	profile := syntheticHandshake()
-	profile.Features = append(profile.Features, XMLField{Name: "MSG", Value: "2:1"})
+	profile.Features = append(profile.Features, XMLField{Name: "MSG", Value: "2:1"}, XMLField{Name: "QGROUP", Value: "2:1"}, XMLField{Name: "QGROUP_MSG", Value: "2:1"})
 	if !localActive {
 		node.Type = 4
 		data, err := node.Encode()
@@ -146,6 +156,7 @@ func serveSyntheticNative(ctx context.Context, discovery, conn *net.UDPConn, nod
 	}
 	sentHandshake := !localActive
 	sentReady := false
+	remoteReady := false
 	messageCompatible := false
 	sendReady := func() error {
 		response, err := EncodeReady(Ready{UserID: node.UserID})
@@ -215,6 +226,17 @@ func serveSyntheticNative(ctx context.Context, discovery, conn *net.UDPConn, nod
 			if !messageCompatible {
 				return transport.Close(ctx)
 			}
+			remoteReady = true
+			for _, push := range initial {
+				wire, err := Encode(push.Command, push.Payload)
+				if err != nil {
+					return err
+				}
+				if err := transport.Send(ctx, wire); err != nil {
+					return err
+				}
+			}
+			initial = nil
 		} else if frame.Command == CommandQuit {
 			if err := DecodeControl(frame); err != nil {
 				return err
@@ -225,7 +247,22 @@ func serveSyntheticNative(ctx context.Context, discovery, conn *net.UDPConn, nod
 			}
 			return transport.Close(ctx)
 		} else if frame.Command != CommandHeartbeat {
-			return io.ErrUnexpectedEOF
+			if handler == nil || !sentReady || !remoteReady {
+				return io.ErrUnexpectedEOF
+			}
+			response, err := handler(frame)
+			if err != nil {
+				return err
+			}
+			if response != nil {
+				wire, err := Encode(response.Command, response.Payload)
+				if err != nil {
+					return err
+				}
+				if err := transport.Send(ctx, wire); err != nil {
+					return err
+				}
+			}
 		}
 	}
 }

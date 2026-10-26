@@ -2,7 +2,19 @@
 
 已验证：独立 Go Windows 386 程序通过正常登录的内网通 3.4.3055 客户端，以业务 `WM_COPYDATA` 向唯一授权原生群发送固定文本，独立接收端确认新增一条、发送者和正文正确。
 
-现有网关继续使用这条已成功的 IPC 路线，不用 IPMsg 或 UI 自动化代替原生群；不使用注入、提权或修改客户端。另行开展的[原生网络协议实现](docs/research/reports/native-protocol/protocol-spec.md)已通过单对端真实上线验收：Linux Go 新节点在 Windows 原客户端显示在线，用户已确认，随后正常退出，见[验收记录](docs/research/reports/native-protocol/native-node-online-confirmation-20261025.md)。1004/3011业务发送尚未实现，不替换现有IPC发送模块。
+现有网关继续使用这条已成功的 IPC 路线，不用 IPMsg 或 UI 自动化代替原生群；不使用注入、提权或修改客户端。另行开展的[原生网络协议实现](docs/research/reports/native-protocol/protocol-spec.md)已通过单对端真实上线验收：Linux Go 新节点在 Windows 原客户端显示在线，用户已确认，随后正常退出，见[验收记录](docs/research/reports/native-protocol/native-node-online-confirmation-20261025.md)。1004单聊已实现按本身份联系人列表选择目标、一次提交及1005/1006回执解析，并完成[固定短正文一次真实接收验收](docs/research/reports/native-protocol/native-user-message-confirmation-20261025.md)；3011已实现正常群同步和单peer完整成员检查，并完成向`qun3`同连接连续两条的[独立接收验收](docs/research/reports/native-protocol/native-group-confirmation-20261025.md)；多peer群未实现，入群由人工操作。不替换现有IPC发送模块。
+
+## 独立 Web 客户端
+
+新增 [`cmd/nwtweb`](docs/tools/nwtweb.md)：Go 单程序内嵌网页，支持后台常驻上线、正常下线、联系人与已同步的已加入群列表，以及网页单聊/群聊。默认只启动本机网页，点击“上线”后才连接指定对端；关闭网页不使后台下线。首次正常握手自动保存当前对端联系人，无需 Windows 客户端或手工编写联系人文件。离线时可在网页填写自定义上线名称，或通过 `POST /api/session/start {"name":"自定义名称"}` 设置；不更换本机身份和联系人。
+
+Web新增 `-discover` 本子网正常发现和共享Host多对端连接，可显示并选择多个已就绪联系人；默认仍保留显式 `-remote` 单对端模式。群聊仍只支持本机与一个已连接成员的群，多成员投递未实现；群列表不保证穷尽。网页默认地址 `http://127.0.0.1:8788`，服务器默认通过 SSH 转发访问，也可用 `-lan` 显式启用局域网访问；按初版要求，网页和API均无鉴权，不再生成访问密码，完整启动参数、结果语义和验证范围见[使用说明](docs/tools/nwtweb.md)。默认测试使用合成/loopback；真实上线、联系人验证与聊天发送分别取得授权，不凭ACK认定送达。
+
+## 原生 HTTP API 与 Swagger
+
+`nwtweb` 同时提供参考远端 `main` 的 `GET /health`、`GET /contacts`、`GET /groups`、`POST /send/user`、`POST /send/group`。名称逐字精确匹配，ID与名称二选一，同名返回409并保留全部候选。API与网页共用已有原生后台，不使用Windows IPC，也不要求登录、token或自定义请求头。
+
+Swagger UI位于 `/docs`（也支持 `/swagger/index.html`），OpenAPI 3.0.3位于 `/openapi.json`；所有文档静态资源内嵌，不依赖外部CDN。请求、原生响应、错误码及与IPC接口的差异见[原生API说明](docs/tools/native-api.md)。
 
 ## 从这里开始
 
@@ -19,7 +31,7 @@
 - `internal/ipc`：非交互式正式 Adapter，`NewAdapter(exePath)` 只绑定正常登录的唯一本机客户端；`SendGroup(groupID, message)` 和 `SendUser(userID, message)` 显式接收目标与正文，返回 `SendResult, error`，支持单次记录及外部接收观察。
 - `cmd/ipcexperiment`：薄实验命令，仅处理参数、确认与观察；默认只读，群实验须显式 `-send` 并确认群目标与固定正文。`Config / LoadConfig` 保留供 CLI 读取目标，不是 Adapter 授权配置；已去除 `-attempt-id`，使用发送返回的自动标识追加观察。
 - `internal/windowprobe`、`cmd/windowprobe`：只读窗口采集与严格定位。
-- `internal/nativeproto`：节点/ENet/业务帧、分片、XML、新身份、单对端 UDP 和限时应用上线；`cmd/nwtprotocol` 只开放离线模式；`cmd/nwtnode` 默认只校验，显式 `-run` 才执行已授权上线，见[说明](docs/tools/nwtnode.md)。
+- `internal/nativeproto`：节点/ENet/业务帧、分片、XML、新身份、单对端UDP、限时/常驻上线与连续单聊；`cmd/nwtprotocol` 只开放离线模式；`cmd/nwtnode` 保留默认只校验的[限时实验入口](docs/tools/nwtnode.md)；新增 `cmd/nwtclient` [启动即上线、stdin连续单聊](docs/tools/nwtclient.md)，`-check` 才只读。已完成[175.4秒常驻、连续两条与正常下线真实验收](docs/research/reports/native-protocol/native-resident-confirmation-20261025.md)；现支持stdin `group_id`群消息及正常群同步，见[群聊使用说明](docs/tools/native-group-chat.md)，另已完成[qun3连续两条真实验收](docs/research/reports/native-protocol/native-group-confirmation-20261025.md)。
 - `tools/contactid.py`：固定codec读取离线加密联系人副本，支持仅看schema和原始姓名精确匹配，不发送、不改配置；Windows合成加密测试及[授权真实副本读取](docs/research/reports/user-id/readonly-validation.md)已通过，联系人名称匹配为not_found；经操作者另确认是本机名称，已从唯一身份表后缀取得本机ID，未配置或发送。
 
 Adapter 不保存配置目标，不做授权目标白名单或 `Config` 比较；默认调用方有权向指定目标发送，Adapter 不另设权限检查，合法目标与正文调用即尝试发送。两个发送方法支持非空、有效 UTF-8、无 NUL 的自定义正文；不再限定为 `ipc.Message` 或统一 512 字节，而是按[正文内容预算](docs/research/reports/ipc-message-content/refined-body-bound.md)计算序列化保守上界，与共同预算 261950 个 UTF-16 code units 比较，超出时在发送前明确拒绝，不截断、不拆分、不重试。这不是厂商最大消息长度。**已知问题：另行授权的261003字真实验证引发客户端卡顿/退出及用户报告的持续重试，用户自行重装恢复；当前尚未另加产品级限额，不能把静态预算当作可用长度。** 详见[异常与恢复记录](docs/research/reports/ipc-phase12/custom-max-body-abnormal.md)。

@@ -1,0 +1,41 @@
+本文件记录离线 Swagger UI 静态资源的官方来源、固定版本、校验值与使用要求。
+
+发行包：swagger-ui-dist 5.34.0
+上游项目：https://github.com/swagger-api/swagger-ui
+npm 官方固定版本元数据：
+pnpm view swagger-ui-dist@5.34.0 version dist.tarball dist.integrity --json --registry=https://registry.npmjs.org
+下载 URL：https://registry.npmjs.org/swagger-ui-dist/-/swagger-ui-dist-5.34.0.tgz
+压缩包 SHA256：15cdd55151558cf29ee70fb485332251a9911ebe27414b243ddd10fef9942394
+npm integrity：sha512-H6tAIjr3XqE31PbkZl0OFya1ziRLDfTwh3J6OHdumPtPCLfjTnyLeagl/55kFNZcTOz9a9QI9WP0FXldwiGJag==
+获取日期：2026-10-25
+
+许可证：Apache-2.0，完整原文见 LICENSE，版权声明见 NOTICE。
+bundle 内第三方版权及许可证见 swagger-ui-bundle.js.LICENSE.txt；全部保留原文。
+仅复制下列静态文件；未执行安装脚本、包入口或构建工具，未修改官方文件：
+
+文件 SHA256
+swagger-ui-bundle.js 3f6abf70480db7e07914df4c98a77385f22ea585eaf457a3e6415ba0eae2d167
+swagger-ui.css c3cfe8248c4b0b89673600fb829924eafbac6de4bc4b2b06f5f5243483074d0a
+LICENSE cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30
+NOTICE 0d20d1adef18aee3f40dd258172155521ce702ac445cb5f7b7d60ed32dad2fb2
+swagger-ui-bundle.js.LICENSE.txt e5a4792feaa5332dfba37f1d7adf84308b93b4f2d8da0569a9f48a3cb61c969b
+
+仅提供 BaseLayout 所需的 bundle 与 CSS，不引入默认初始化器、Petstore、
+standalone preset、OAuth 页面、外部字体、在线 validator 或 CDN。
+上游文件中的 sourceMappingURL 是调试器用的映射提示，不影响页面离线运行；
+本页不需要 source map，因此未复制体积较大的映射文件。
+
+宿主 Go 路由应 embed assets/docs/* assets/swagger/* 并提供：
+GET /docs -> assets/docs/index.html
+GET /docs/init.js -> assets/docs/init.js
+GET /docs/style.css -> assets/docs/style.css
+GET /openapi.json -> assets/docs/openapi.json
+GET /swagger-ui/swagger-ui-bundle.js -> assets/swagger/swagger-ui-bundle.js
+GET /swagger-ui/swagger-ui.css -> assets/swagger/swagger-ui.css
+
+文档页 CSP 应允许 script-src 'self'，style-src 'self' 'unsafe-inline'；
+Swagger UI 使用内联样式，但本页无内联脚本或事件，不需要 unsafe-eval。
+connect-src 仅允许 'self'；官方 CSS 内嵌图像需要 img-src 'self' data:。
+不使用外部脚本、validator、URL 配置覆盖、鉴权或 token。
+初始化器禁止跨源请求、Authorization、浏览器凭据和自动跟随重定向。
+文档加载只读取 /openapi.json，不自动调用业务 GET 或任何 POST。

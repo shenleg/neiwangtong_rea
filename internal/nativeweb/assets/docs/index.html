@@ -1,0 +1,25 @@
+<!-- 本文件提供离线 Swagger UI 文档入口；所有脚本、样式与 OpenAPI 均由本站提供。 -->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>原生消息网关 · API 文档</title>
+  <link rel="stylesheet" href="/swagger-ui/swagger-ui.css">
+  <link rel="stylesheet" href="/docs/style.css">
+  <script src="/swagger-ui/swagger-ui-bundle.js" defer></script>
+  <script src="/docs/init.js" defer></script>
+</head>
+<body>
+  <header class="docs-header">
+    <nav aria-label="页面导航"><a href="/">返回聊天页面</a><a href="/openapi.json">下载 OpenAPI JSON</a></nav>
+    <h1>原生消息网关 API 文档</h1>
+    <p class="send-warning"><strong>发送接口会发送真实消息。</strong>页面加载不会执行 POST；只有明确点击 Try it out 并点击 Execute 才提交。请先核实目标、完整正文和次数。</p>
+    <p>每次公开 <code>/send/*</code> 调用都是新请求，不自动重试，也不保证跨 HTTP 请求幂等。发生错误或重定向后不要直接补发；<code>delivery</code> 始终为 <code>unknown</code>，协议确认不等于独立接收。</p>
+    <p>初版无鉴权，不使用 token、登录或 Authorization。所有文档资源同源离线可用；示例均为合成数据，不代表可用的真实目标。</p>
+  </header>
+  <main id="swagger-ui" aria-label="Swagger UI 接口文档"></main>
+  <noscript>此文档需要 JavaScript；也可下载上方 OpenAPI JSON 离线阅读。</noscript>
+</body>
+</html>

@@ -144,6 +144,6 @@ ENET_REFERENCE_BINARY=/tmp/nwt-enet-runtime-0iaAKd6Z/driver/enet-reference \
 
 ## 5. 下一步
 
-本机新身份、默认节点包、单对端发现与1000/1018/1016/1017运行已经接入，并完成[真实UI上线验收](../research/reports/native-protocol/native-node-online-confirmation-20261025.md)，入口见 [nwtnode](nwtnode.md)。共享host多peer、完整主/临时连接规则仍需实现。
+本机新身份、默认节点包、单对端发现与1000/1018/1016/1017运行已经接入，常驻与连续单聊使用上层[nwtclient](nwtclient.md)；并完成[真实UI上线验收](../research/reports/native-protocol/native-node-online-confirmation-20261025.md)，入口见 [nwtnode](nwtnode.md)。共享host多peer、完整主/临时连接规则仍需实现。
 
-真实运行只有上线控制，没有聊天业务发送或 `recipient_observed`。1004/3011仍需另行开发和具体授权的独立接收验收，原IPC继续负责生产发送。
+历史真实运行只有上线控制，没有聊天业务发送或 `recipient_observed`。上层现已实现1004单聊一次提交与1005/1006解析，并完成[固定短正文一次真实接收验收](../research/reports/native-protocol/native-user-message-confirmation-20261025.md)；上层另已实现正常群同步及3011，完成[qun3连续两条真实验收](../research/reports/native-protocol/native-group-confirmation-20261025.md)，仅支持完整非己成员就是当前peer的群，见[群聊说明](native-group-chat.md)。多peer尚未实现，原IPC继续负责生产发送。

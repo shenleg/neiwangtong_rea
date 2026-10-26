@@ -1,0 +1,153 @@
+{
+  "purpose": "仅记录群同步静态契约的必要模板、精确VA、指令观察和未知范围；不是REA原生Evidence bundle。",
+  "artifact": {
+    "path": "/root/reverse-lab/extracted/app/ShiYeLine.exe",
+    "sha256": "e7caef3fe744f9fe6ba90dd1d53b7e64241cb54020a8bf37be5e756e2fe881b1",
+    "format": "PE32 x86",
+    "image_base": "0x400000"
+  },
+  "method": "离线只读样本、已有静态JSON；objdump -d -Mintel --start-address=VA --stop-address=VA；UTF-16LE字符串从PE节映射读取。没有运行目标或访问网络。",
+  "records": [
+    {
+      "id": "G01",
+      "kind": "local_static_identity",
+      "sections": [
+        {"name": ".text", "va": "0x401000", "file_offset": "0x400", "size": "0x503738"},
+        {"name": ".rdata", "va": "0x905000", "file_offset": "0x503c00", "size": "0x170344"},
+        {"name": ".data", "va": "0xa76000", "file_offset": "0x674000", "size": "0x2ae00"}
+      ],
+      "mapping": "本记录模板均在.rdata：file_offset = VA - 0x905000 + 0x503c00。指令均在.text：file_offset = VA - 0x401000 + 0x400。"
+    },
+    {
+      "id": "G02",
+      "kind": "local_static_templates_and_commands",
+      "encoding": "UTF-16LE, NUL terminated",
+      "templates": [
+        {"command": 3001, "va": "0x9eed78", "template": "<X_QGROUP_INVITE_RSP docver=\"%u\"><QGROUP_ID>%s</QGROUP_ID><USER_NAME>%s</USER_NAME><ACTION>%u</ACTION></X_QGROUP_INVITE_RSP>", "references": ["0x679665: push 0x9eed78", "0x6796c1: push 0xbb9", "0x6796c8: call 0x67b3b0"]},
+        {"command": 3002, "va": "0x9edc20", "template": "<X_QGROUP_PUSH_INFO docver=\"%u\"><INFO><QGROUP_ID>%s</QGROUP_ID><QGROUP_NAME>%s</QGROUP_NAME><QGROUP_MASTER>%s</QGROUP_MASTER><QGROUP_INTR>%s</QGROUP_INTR><QGROUP_ANN>%s</QGROUP_ANN><QGROUP_INFO_VER>%llu</GROUP_INFO_VER><QGROUP_USER_VER>%llu</QGROUP_USER_VER><QGROUP_ALLOW_OTHER_ADD>%llu</QGROUP_ALLOW_OTHER_ADD><QGROUP_PHOTO_MD5>%s</QGROUP_PHOTO_MD5></INFO></X_QGROUP_PUSH_INFO>", "references": ["template pointer operand at 0x671d38", "0x671e3e: push 0xbba", "0x671e45: call 0x67b3b0"]},
+        {"command": 3003, "va": "0x9edf30", "template": "<X_QGROUP_PUSH_USER docver=\"%u\"><INFO><QGROUP_ID>%s</QGROUP_ID><QGROUP_NAME>%s</QGROUP_NAME><QGROUP_MASTER>%s</QGROUP_MASTER><QGROUP_INTR>%s</QGROUP_INTR><QGROUP_ANN>%s</QGROUP_ANN><QGROUP_INFO_VER>%llu</GROUP_INFO_VER><QGROUP_USER_VER>%llu</QGROUP_USER_VER><QGROUP_ALLOW_OTHER_ADD>%llu</QGROUP_ALLOW_OTHER_ADD><QGROUP_PHOTO_MD5>%s</QGROUP_PHOTO_MD5></INFO><USER>%s</USER></X_QGROUP_PUSH_USER>", "references": ["0x672f8a: push 1", "0x672f8c: push 0x9edf30", "0x6730a6: push 0xbbb", "0x6730ad: call 0x67b3b0"]},
+        {"command": 3004, "va": "0x9ee3a8", "template": "<X_QGROUP_REQ_INFO docver=\"%u\"><QGROUP_ID>%s</QGROUP_ID></X_QGROUP_REQ_INFO>", "references": ["template pointer operand at 0x674e9c", "0x674ef3: push 0xbbc", "0x674efa: call 0x67b3b0"]},
+        {"command": 3005, "va": "0x9ebc98", "template": "<X_QGROUP_REQ_INFO_RSP docver=\"%u\"><RET>%u</RET><QGROUP_ID>%s</QGROUP_ID></X_QGROUP_REQ_INFO_RSP>", "references": ["template pointer operand at 0x665bfb", "0x665c56: push 0xbbd", "0x665c5d: call 0x67b3b0"]},
+        {"command": 3005, "va": "0x9ebd60", "template": "<X_QGROUP_REQ_INFO_RSP docver=\"%u\"><RET>%u</RET><QGROUP_ID>%s</QGROUP_ID><INFO><QGROUP_ID>%s</QGROUP_ID><QGROUP_NAME>%s</QGROUP_NAME><QGROUP_MASTER>%s</QGROUP_MASTER><QGROUP_INTR>%s</QGROUP_INTR><QGROUP_ANN>%s</QGROUP_ANN><QGROUP_INFO_VER>%llu</GROUP_INFO_VER><QGROUP_USER_VER>%llu</QGROUP_USER_VER><QGROUP_ALLOW_OTHER_ADD>%llu</QGROUP_ALLOW_OTHER_ADD><QGROUP_PHOTO_MD5>%s</QGROUP_PHOTO_MD5></INFO></X_QGROUP_REQ_INFO_RSP>", "references": ["template pointer operand at 0x665e7b", "0x665f95: push 0xbbd", "0x665f9c: call 0x67b3b0"]},
+        {"command": 3006, "va": "0x9ebb30", "template": "<X_QGROUP_REQ_USER docver=\"%u\"><QGROUP_ID>%s</QGROUP_ID></X_QGROUP_REQ_USER>", "references": ["0x664f09: push 1", "0x664f0b: push 0x9ebb30", "0x664f63: push 0xbbe", "0x664f6a: call 0x67b3b0"]},
+        {"command": 3007, "va": "0x9eaac0", "template": "<X_QGROUP_REQ_USER_RSP docver=\"%u\"><RET>%u</RET><QGROUP_ID>%s</QGROUP_ID></X_QGROUP_REQ_USER_RSP>", "references": ["0x65e7a7: push 1", "0x65e7a9: push 0x9eaac0"]},
+        {"command": 3007, "va": "0x9eab88", "template": "<X_QGROUP_REQ_USER_RSP docver=\"%u\"><RET>%u</RET><QGROUP_ID>%s</QGROUP_ID><INFO><QGROUP_ID>%s</QGROUP_ID><QGROUP_NAME>%s</QGROUP_NAME><QGROUP_MASTER>%s</QGROUP_MASTER><QGROUP_INTR>%s</QGROUP_INTR><QGROUP_ANN>%s</QGROUP_ANN><QGROUP_INFO_VER>%llu</GROUP_INFO_VER><QGROUP_USER_VER>%llu</QGROUP_USER_VER><QGROUP_ALLOW_OTHER_ADD>%llu</QGROUP_ALLOW_OTHER_ADD><QGROUP_PHOTO_MD5>%s</QGROUP_PHOTO_MD5></INFO><USER>%s</USER></X_QGROUP_REQ_USER_RSP>", "references": ["0x65ec85: push 1", "0x65ec87: push 0x9eab88", "0x65edd2: push 0xbbf", "0x65edd9: call 0x67b3b0"]},
+        {"command": 3012, "va": "0x9eb620", "template": "<X_QGROUP_OTHER_INVITE docver=\"%u\"><QGROUP_ID>%s</QGROUP_ID><USER>%s</USER></X_QGROUP_OTHER_INVITE>", "references": ["0x662c2f: push 1", "0x662c31: push 0x9eb620", "0x662c7a: push 0xbc4", "0x662c81: call 0x67b3b0"]}
+      ],
+      "parser_field_names": [
+        {"va": "0x9eaf7c", "ascii": "QGROUP_INFO_VER", "references_operands": ["0x6723a8", "0x67368d", "0x666745", "0x65f634"]},
+        {"va": "0x9eaf8c", "ascii": "QGROUP_USER_VER", "references_operands": ["0x67243d", "0x673725", "0x6667da", "0x65f6cf"]}
+      ],
+      "limits": "错误闭合标签是模板原文。独立实现的INFO内局部更正是重建选择，未还原厂商XML库完整容错算法。"
+    },
+    {
+      "id": "G03",
+      "kind": "local_static_member_encoding",
+      "member_template": {"va": "0x9eaef4", "encoding": "UTF-16LE", "value": "<ID name=\"%s\">%s</ID>"},
+      "observations": [
+        "0x672cc5: lea ecx,[edi+0x10]; 0x672ccc: call 0x659a80; 0x672cd1: mov [esp+0x14],eax (ID string)",
+        "0x672cf6/0x672cff: load member string at edi+0x2c; 0x672d06: call 0x659a80 (member name)",
+        "0x672d0b: mov ecx,[esp+0x14]; 0x672d2e: push ecx (second %s, ID text); 0x672d2f: push eax (first %s, name)",
+        "0x672d30: push 0x9eaef4; 0x672d42: call 0x882549; serialized entries are appended in the member iteration loop",
+        "0x65e9e8: push 0x9eaef4 (3007 uses same member item template)",
+        "0x673c2c: push 0x9eafd0 (ASCII ID); 0x673c32: call 0x885b1e; 0x673c42-0x673c9f: obtain ID element text and convert UTF-8",
+        "0x673cd1: mov edi,0x9e5138 (ASCII name); 0x673cde/0x673cec: call 0x660060 to obtain name attribute"
+      ],
+      "semantic_result": "USER contains repeated ID entries; name attribute is display name; text is original member ID. No pagination/delta fields occur in these templates.",
+      "limits": "没有读取任何真实成员列表；完整集合语义限于这些群成员序列化路径。"
+    },
+    {
+      "id": "G04",
+      "kind": "local_static_ret_flags",
+      "observations": [
+        "0x65e775: mov ecx,[esp+0x30]; 0x65e784: test cl,0x4; 0x65e787: jne 0x65e85e. Clear bit selects short RET+QGROUP_ID template.",
+        "0x65f05c: call 0x8824a6; 0x65f064: mov [esp+0x60],eax; 0x65f068: test al,0x4; 0x65f06a: jne 0x65f235. Set bit selects INFO decoding.",
+        "OnQGroupReqUser starts 0x619cc0. 0x619d12-0x619d1d checks local user via 0x61afe0; false branch 0x619d98: push 0xa; 0x619da8: call 0x610e30.",
+        "0x619e08: call 0x61b470 obtains member data; 0x619e16: call 0x61b1c0 resolves caller from route; 0x619e20: call 0x61afe0 checks requesting user.",
+        "0x619e25: xor ebx,ebx; 0x619e27: test al,al; 0x619e29: setne bl; 0x619e35: lea ebx,[ebx*8+0xc]; 0x619e4c: push ebx; 0x619e50: call 0x610e30.",
+        "OnQGroupReqUserRsp 0x61a047: mov eax,[ebp+0x10]; 0x61a04c: and ebx,0x4; 0x61a057: je 0x61a55d; 0x61a05d: test al,0x10; 0x61a05f: je 0x61a55d. Both flags required for normal successful state update branch."
+      ],
+      "normal_values": {"local_not_member": 10, "caller_not_member_but_info_included": 12, "caller_member_and_info_included": 20},
+      "limits": "不是穷尽所有RET值。这里恢复4与16的业务含义和三个正常产生分支，不将RET==0当成功。"
+    },
+    {
+      "id": "G05",
+      "kind": "local_static_feature_versions",
+      "observations": [
+        "UTF-16LE 0x9b750c = 1; UTF-16LE 0x9b7510 = 1:2.",
+        "0x43fa40: push 0x9b7510; 0x43fa56: call 0x408330; 0x43fa5b: push 0xb29154; 0x43fa70: call 0x5b9da0 (QGROUP set).",
+        "0x43fa93: push 0x9b7510; 0x43faa9: call 0x408330; 0x43faae: push 0xb29170; 0x43fac3: call 0x5b9da0 (QGROUP_MSG set).",
+        "Global user object base 0xb28dd0 (0x4b9c82: mov edx,0xb28dd0; 0x5bafd1: push 0xb28dd0). 0xb28df0 is its user ID string at +0x20, not the object base.",
+        "0x5b8e30-0x5b8e51: add ebx,0x384; call 0x5b9f50 (QGROUP). 0x5b8e60-0x5b8e81: add ebx,0x3a0; call 0x5b9f50 (QGROUP_MSG). These point to trees inside global wrappers 0xb29154/0xb29170.",
+        "0x5b991a: call 0x5b8e30; 0x5b9924: lea ecx,[ebx+0x134]. 0x5b9958: call 0x5b8e60; 0x5b9962: lea ecx,[ebx+0x150].",
+        "Reverse mapping 0x5b916b-0x5b9179 converts handshake+0x134 into user+0x384 set; 0x5b917e-0x5b918c converts handshake+0x150 into user+0x3a0 set. Handshake+0x118 is REMOTE_ASSISTANCE, not QGROUP.",
+        "0x5b9da0: parse string to numeric set using 0x5f4fa0 and 0x5ba160. 0x5b9f50: iterate set, 0x5b9ffe convert integer base10, 0x5ba068 push 0x99dd74 (wide colon) between values.",
+        "0x669370 handshake packer copies object via 0x66caf0; template 0x9ec510 contains FEATURE/QGROUP followed by FEATURE/QGROUP_MSG. Argument mapping: QGROUP from object+0x134, QGROUP_MSG from object+0x150."
+      ],
+      "result": {"QGROUP_supported_set": [1, 2], "QGROUP_MSG_supported_set": [1, 2], "reconstruction_advertisement": "2:1", "group_xml_docver": 1},
+      "limits": "本次对群能力确定的是支持集合{1,2}及字段映射；2:1沿用同一serializer已验证MSG表示。未恢复全部版本协商状态机，不凭声明版本证明加入或送达。"
+    },
+    {
+      "id": "G06",
+      "kind": "local_static_group_sync_flow",
+      "observations": [
+        "OnQGroupPushInfo 0x618da0. 0x618de3/0x618def/0x618df9 require group ID/name/master strings nonempty; 0x618e03-0x618e21 require info/user version uint64 nonzero.",
+        "0x618e27-0x618e33: local user membership check via 0x61afe0; false branch logs CQGroupMgr::OnQGroupPushInfo at 0x618e63 using I am not in qgroup format.",
+        "0x618ec8-0x618edc compares group user version at +0xa0/+0xa4; unequal -> 0x618ef1 call 0x610cc0 (3006 request builder).",
+        "0x618f06-0x618f1a compares group info version at +0x98/+0x9c; subsequent local info update 0x618f40 call 0x61b6f0.",
+        "OnQGroupPushUser 0x618ff0: 0x619033-0x619086 validates strings/versions and nonempty USER container; 0x619109 calls local membership helper 0x61afe0; 0x619160-0x61917a compares member version.",
+        "0x618410-0x618609 normal peer data event updates route/user index, iterates related groups and sends REQ_INFO: 0x6184f5 and 0x6185de call 0x610930. 0x610989 command holder = 0xbbc.",
+        "0x619e08 requests complete local member data via 0x61b470; 3007 includes one concatenated USER collection, not a page or delta."
+      ],
+      "limits": "没有证明新独立节点在空本地群状态下每次上线必收到穷尽群推送，也没有无群ID的全群枚举请求。将收到的3004作为ID种子再3006核实是独立实现策略。"
+    },
+    {
+      "id": "G07",
+      "kind": "local_static_3011_unpack",
+      "observations": [
+        "0x679f30 starts unpacker; vtable slot 0x9e96f8 holds 0x679f30 (previous chat-contract L3).",
+        "0x67a04d: push 0x9eefb8 (ASCII X_QGROUP_SEND_MSG); 0x67a053: call 0x885b1e compares root.",
+        "0x67a069: mov edi,0x9eaf3c (QGROUP_ID); 0x67a06e: call 0x659df0; nonempty required.",
+        "0x67a11d: mov edi,0x9ea874 (MSG_ID); 0x67a18b: push 10; 0x67a190: call 0x8858c2 converts 64-bit decimal.",
+        "0x67a1aa: mov edi,0x9ea884 (MSG); 0x67a1de and 0x67a1ff reject absent/empty values.",
+        "0x67a261: mov edi,0x9ea89c (HIDE_RECORD); 0x67a266 initializes local default0; 0x67a2c8 parses integer if provided; 0x67a2d2 normalizes nonzero.",
+        "0x67a321: call 0x67a4a0; 0x67a588 invokes registered callback through eax. These are XML parse/callback dispatch, not complete business member authorization."
+      ],
+      "limits": "本次没有恢复后续3011业务回调中的全部成员检查，也没有证明群业务回执。"
+    },
+    {
+      "id": "G08",
+      "kind": "reused_static_evidence",
+      "sources": [
+        {"path": "docs/research/reports/native-protocol/static-evidence.json", "procedure": "0x617600", "evidence_id": "ev_17d599ba7a6250a059051f51594bdcf6194448246f10f3ac131758f1b83d01b0"},
+        {"path": "docs/research/reports/native-protocol/static-evidence.json", "procedure": "0x61b350", "evidence_id": "ev_63118a91c23c27d07c14e92531f4c51bc2a9d8cadc9f3a35dc915cf784c14a4b"},
+        {"path": "docs/research/reports/native-protocol/static-evidence.json", "procedure": "0x61b150", "evidence_id": "ev_139c8d9b7089de68a3e6a4de0a75930235a6f318e25926c74759ed94cd00fb7b"},
+        {"path": "docs/research/reports/native-protocol/static-evidence.json", "procedure": "0x679c10", "evidence_id": "ev_c96d5ddf43030d31f8d85b326608fe1e93f3a3b87fbcfe7fddd06007fab2537a"}
+      ],
+      "result": "0x617600 -> 0x61b350枚举群成员，0x61b150解析路由，只加入非零路由，随后逐路由0x6114f0构造3011。不是固定单peer广播。",
+      "limits": "静态遍历不等于真实全部成员送达；不能把缺失路由过滤后的集合称为完整群覆盖。"
+    },
+    {
+      "id": "G09",
+      "kind": "coverage_and_unknowns",
+      "rea_attempt": {
+        "owned_session_opened": true,
+        "snapshot": "/tmp/nwt-protocol-static-UCYbaNdR/native-network.snapshot.json",
+        "failed_evidence_id": "ev_0895955bbce9011aae5e1b56c33a3cc777354766c416d5555e9080689794c248",
+        "selectors": ["0x67a4a0", "0x664d90", "0x665b00", "0x671b00", "0x672c00", "0x674c00", "0x613770"],
+        "result": "All seven failed with provider_timeout at Ghidra 330000ms startup deadline; no pseudocode obtained. No retry of cold analysis.",
+        "exported_bundle": "/tmp/nwt-group-contract-rea-20261025.json",
+        "export_records": 288,
+        "export_bytes": 3310724,
+        "owned_session_closed": true
+      },
+      "unknowns": [
+        "首次上线的空本地群状态是否保证取得本身份全部已加入群：未证明。",
+        "3011业务回调的完整发送者/接收者成员条件：未完成。",
+        "3011专属业务回执命令与字段，或是否复用1005：未证明。3012明确排除。",
+        "完整多peer路由与离线成员策略不由本次静态契约实现。"
+      ],
+      "negative_search_boundary": "只核对原样本群模板字符串、3001-3007/3011/3012 packer命令常量、3011 unpack和已知群资料接收入口；未对整个二进制证明不存在其他群回执。未运行任何真实网络实验。"
+    }
+  ]
+}

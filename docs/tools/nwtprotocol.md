@@ -9,12 +9,12 @@
 - 304 字节发现/节点控制包：类型 1、2、4，保留模板中的未知字节。
 - ENet 包和 1..12 命令编解码：无压缩、无 checksum 扩展，支持一包多命令及逐字节往返。
 - ENet 分片重组：乱序、重复、冲突、缺口、显式缓存预算和到期清理。
-- 1000 握手、1018 READY、1016 心跳、1017 QUIT、3004 群资料请求的 XML 编解码。
+- 1000 握手、1018 READY、1016 心跳、1017 QUIT、3004 群资料请求，以及1004单聊/1005确认/1006回执的编解码。
 - XTEA 业务帧；3005 保留原文，不修补厂商 XML 标签错配。
 - 单对端双向时序观察、60 秒心跳发送检查和 120 秒接收超时判断。
 - 二进制解析与 JSON Lines 离线回放命令。
 
-已新增[单对端 ENet 可靠传输](native-transport.md)及[独立新节点运行](nwtnode.md)，真实上线获原客户端UI确认并正常退出，见[验收记录](../research/reports/native-protocol/native-node-online-confirmation-20261025.md)。这不改变 `Peer` 离线观察器的含义：它的 online 本身仍不代表UI确认。完整多peer、临时连接管理和1004/3011业务提交尚未完成。
+已新增[单对端 ENet 可靠传输](native-transport.md)及[独立新节点运行](nwtnode.md)，真实上线获原客户端UI确认并正常退出，见[验收记录](../research/reports/native-protocol/native-node-online-confirmation-20261025.md)。这不改变 `Peer` 离线观察器的含义：它的 online 本身仍不代表UI确认。1004已接入本身份联系人列表选择及一次提交，并完成[固定短正文一次真实接收验收](../research/reports/native-protocol/native-user-message-confirmation-20261025.md)；另有[nwtclient常驻与连续单聊](nwtclient.md)，已完成[175.4秒、两条独立接收及正常下线真实验收](../research/reports/native-protocol/native-resident-confirmation-20261025.md)；3011及群资料/成员同步已实现并完成[qun3连续两条真实验收](../research/reports/native-protocol/native-group-confirmation-20261025.md)，见[群聊说明](native-group-chat.md)；完整多peer及临时连接管理仍未完成。
 
 本命令保持离线，不创建 socket。包中的 UDPTransport 只使用调用者明确提供的独占 socket 和单个远端，不自动读取客户端、联系人库或凭据，不自动建连/重连。现有 IPC 网关不受影响。
 
@@ -196,6 +196,6 @@ go test -race -count=1 -timeout 45s ./internal/nativeproto ./cmd/nwtprotocol
 
 ## 6. 下一步
 
-单对端真实应用上线已由 [nwtnode](nwtnode.md)实现并验收；不需要再为“尚未上线”重复抓稳态/启动/退出。接下来是完整主/临时连接、多peer及1004/3011业务生成。
+单对端真实应用上线已由 [nwtnode](nwtnode.md)实现并验收；不需要再为“尚未上线”重复抓稳态/启动/退出。1004单聊已实现并通过合成/loopback测试，见[nwtnode单聊入口](nwtnode.md#6-联系人列表与单聊)；3011已通过[单peer完整成员群的连续两条验收](../research/reports/native-protocol/native-group-confirmation-20261025.md)；完整主/临时连接和多peer仍待实现，入群由人工操作。
 
-聊天发送和独立接收尚未完成。传输层重传与应用层重新提交必须分开；上线验收不延续真实连接或发送授权。聊天验收仍采用具体消息的 `recipient_observed`，不能由 codec、回放online、UI看到节点或ACK代替。
+真实单聊已完成固定短正文一次的独立接收验收，依据见[单聊验收记录](../research/reports/native-protocol/native-user-message-confirmation-20261025.md)；其他正文/显示边界仍未验收。传输层重传与应用层重新提交必须分开；已用授权不延续后续真实连接或发送。聊天验收仍采用具体消息的 `recipient_observed`，不能由 codec、回放online、UI看到节点或ACK代替。

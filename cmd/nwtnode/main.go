@@ -1,9 +1,10 @@
-// 本程序以独立新身份执行一次限时单播上线实验；默认只校验参数，真实运行必须显式 -run，不发送聊天消息。
+// 本程序以独立身份执行一次限时单播实验；默认只校验，-run 才上线，额外 -send 才提交一条明确目标的聊天消息。
 package main
 
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -37,8 +38,48 @@ func run(args []string, stdout, stderr io.Writer) int {
 	discoveryPort := flags.Uint("discovery-port", 9011, "本机实际绑定的发现端口")
 	enetPort := flags.Uint("enet-port", 9012, "本机实际绑定的 ENet 主端口")
 	duration := flags.Duration("duration", 90*time.Second, "包含发现、握手和退出的总时限，最多90秒")
-	execute := flags.Bool("run", false, "执行一次显式单播上线；不聊天、不广播、不自动重连")
+	execute := flags.Bool("run", false, "执行一次显式单播上线；不广播、不自动重连")
+	send := flags.Bool("send", false, "与-run同时使用，向指定对端提交一条聊天消息；不自动重试")
+	userID := flags.String("user-id", "", "明确聊天对端UserID；必须与发现节点一致")
+	message := flags.String("message", "", "完整UTF-8纯文本正文；只有-send才发送")
+	contactsPath := flags.String("contacts", "", "本独立身份自己的联系人JSON列表绝对路径")
+	listContacts := flags.Bool("list-contacts", false, "只读输出联系人列表，不生成身份或建立网络连接")
+	contactsOut := flags.String("contacts-out", "", "上线后将已验证对端资料独占写入新联系人列表文件；不覆盖已有文件")
 	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	contacts, err := readContacts(*contactsPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	if *listContacts {
+		if contacts == nil || *execute || *send || *userID != "" || *message != "" || *contactsOut != "" || flags.NArg() != 0 {
+			fmt.Fprintln(stderr, "-list-contacts需要-contacts且不能与运行或发送参数混用")
+			return 2
+		}
+		if err := json.NewEncoder(stdout).Encode(contacts.ListContacts()); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return 0
+	}
+	chat, err := chatOptions(*userID, *message, *send, *execute, contacts)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	if chat != nil {
+		contact, _ := contacts.ContactByID(chat.UserID) // chatOptions已验证唯一目标。
+		if *remoteText == "" {
+			*remoteText = contact.Discovery.String()
+		} else if *remoteText != contact.Discovery.String() {
+			fmt.Fprintln(stderr, "-remote必须与选定联系人的发现端点一致")
+			return 2
+		}
+	}
+	if *contactsOut != "" && (!filepath.IsAbs(*contactsOut) || *contactsOut == *identityPath || *contactsOut == *recordPath || *contactsOut == *contactsPath) {
+		fmt.Fprintln(stderr, "联系人输出必须是不同于身份、记录和旧列表的绝对新路径")
 		return 2
 	}
 	local, err := netip.ParseAddr(*localText)
@@ -71,20 +112,20 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if !*execute {
-		if err := json.NewEncoder(stdout).Encode(map[string]any{"mode": "validation_only", "network_invoked": false, "name": *name, "local": local.String(), "remote": remote.String(), "duration_seconds": duration.Seconds()}); err != nil {
+		if err := json.NewEncoder(stdout).Encode(map[string]any{"mode": "validation_only", "network_invoked": false, "name": *name, "local": local.String(), "remote": remote.String(), "duration_seconds": duration.Seconds(), "chat_requested": chat != nil}); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
 		return 0
 	}
-	if err := executeNode(local, broadcast, remote, uint16(*discoveryPort), uint16(*enetPort), profile, *name, *identityPath, *recordPath, *duration, stdout); err != nil {
+	if err := executeNode(local, broadcast, remote, uint16(*discoveryPort), uint16(*enetPort), profile, *name, *identityPath, *recordPath, *duration, contacts, *contactsOut, chat, stdout); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
 	return 0
 }
 
-func executeNode(local, broadcast netip.Addr, remote netip.AddrPort, discoveryPort, enetPort uint16, profile nativeproto.Handshake, name, identityPath, recordPath string, duration time.Duration, stdout io.Writer) (runErr error) {
+func executeNode(local, broadcast netip.Addr, remote netip.AddrPort, discoveryPort, enetPort uint16, profile nativeproto.Handshake, name, identityPath, recordPath string, duration time.Duration, contacts *nativeproto.Directory, contactsOut string, chat *nativeproto.ChatRequest, stdout io.Writer) (runErr error) {
 	// 记录先独占创建并Sync，再创建新身份/绑定socket；记录碰撞时本次没有任何网络副作用。
 	file, err := os.OpenFile(recordPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
@@ -98,7 +139,7 @@ func executeNode(local, broadcast netip.Addr, remote netip.AddrPort, discoveryPo
 		}
 		return file.Sync()
 	}
-	if err := record(map[string]any{"event": "reserved", "started_at": time.Now().UTC(), "local": local.String(), "remote": remote.String(), "name": name, "duration_seconds": duration.Seconds(), "ui_observation": "unknown", "chat_sends": 0}); err != nil {
+	if err := record(map[string]any{"event": "reserved", "started_at": time.Now().UTC(), "local": local.String(), "remote": remote.String(), "name": name, "duration_seconds": duration.Seconds(), "ui_observation": "unknown", "chat_sends": 0, "chat_requested": chat != nil}); err != nil {
 		return err
 	}
 	defer func() {
@@ -109,6 +150,22 @@ func executeNode(local, broadcast netip.Addr, remote netip.AddrPort, discoveryPo
 	id, err := nativeproto.LoadOrCreateIdentity(identityPath, rand.Reader)
 	if err != nil {
 		return err
+	}
+	if contacts != nil && contacts.OwnUserID() != id {
+		return fmt.Errorf("联系人列表不属于当前独立身份")
+	}
+	if chat != nil {
+		if err := record(map[string]any{"event": "chat_request", "target_user_id_sha256": fmt.Sprintf("%x", sha256.Sum256([]byte(chat.UserID))), "message_sha256": fmt.Sprintf("%x", sha256.Sum256([]byte(chat.Text))), "message_bytes": len(chat.Text), "delivery": "unknown"}); err != nil {
+			return err
+		}
+	}
+	var contactFile *os.File
+	if contactsOut != "" {
+		contactFile, err = os.OpenFile(contactsOut, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			return fmt.Errorf("独占创建联系人输出失败，不覆盖或改名重试: %w", err)
+		}
+		defer func() { runErr = errors.Join(runErr, contactFile.Close()) }()
 	}
 	session, err := nativeproto.NewSessionGUID(rand.Reader)
 	if err != nil {
@@ -142,7 +199,7 @@ func executeNode(local, broadcast netip.Addr, remote netip.AddrPort, discoveryPo
 	client, err := nativeproto.NewClient(discovery, conn, nativeproto.ClientConfig{Node: node, Profile: profile, RemoteDiscovery: remote,
 		Transport: nativeproto.ENetConfig{LocalPeerID: 0, ConnectID: nonce, MTU: 1400, WindowBytes: 65536, MaxMessageBytes: 1 << 20, MaxQueuedBytes: 4 << 20, MaxPendingCommands: 1024,
 			RetransmitAfter: 500 * time.Millisecond, MaxAttempts: 6, ReceiveTimeout: 120 * time.Second, PingInterval: 30 * time.Second},
-		Duration: duration - shutdown, ShutdownTimeout: shutdown, DiscoveryTimeout: 10 * time.Second, HandshakeTimeout: 15 * time.Second})
+		Duration: duration - shutdown, ShutdownTimeout: shutdown, DiscoveryTimeout: 10 * time.Second, HandshakeTimeout: 15 * time.Second, Contacts: contacts, Chat: chat})
 	if err != nil {
 		return err
 	}
@@ -160,7 +217,18 @@ func executeNode(local, broadcast netip.Addr, remote netip.AddrPort, discoveryPo
 		}
 		return nil
 	})
-	if resultErr := record(map[string]any{"event": "result", "result": result, "error": errorText(err), "ui_observation": "unknown", "chat_sends": 0}); resultErr != nil {
+	if contactFile != nil {
+		if contact, ok := client.Contact(); ok {
+			err = errors.Join(err, saveContacts(contactFile, id, contacts, contact))
+		} else {
+			err = errors.Join(err, fmt.Errorf("未完成联系人身份/握手确认，保留联系人输出但不写入未验证资料"))
+		}
+	}
+	chatSends := 0
+	if result.Chat != nil && result.Chat.Submitted {
+		chatSends = 1
+	}
+	if resultErr := record(map[string]any{"event": "result", "result": result, "error": errorText(err), "ui_observation": "unknown", "chat_sends": chatSends}); resultErr != nil {
 		return errors.Join(err, resultErr)
 	}
 	if outputErr := json.NewEncoder(stdout).Encode(map[string]any{"event": "result", "result": result, "ui_observation": "unknown"}); outputErr != nil {

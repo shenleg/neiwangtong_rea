@@ -14,10 +14,10 @@ import (
 // udpPollInterval 限制无背景读协程时的取消延迟，并让核心定期处理可靠命令重传。
 const udpPollInterval = 20 * time.Millisecond
 
-// UDPTransport 独占一个 socket，只与构造时的端点通信；所有方法必须串行调用，不能共享 socket。
+// UDPTransport 独占一个真实或虚拟 socket，只与构造时的端点通信；所有方法必须串行调用。
 // 不启动后台协程，不自动建连、重连或更换 ConnectID；可靠命令重传仅由 ENetRuntime.Tick 执行。
 type UDPTransport struct {
-	conn               *net.UDPConn
+	conn               packetConn
 	remote             netip.AddrPort
 	runtime            *ENetRuntime
 	origin             time.Time
@@ -28,13 +28,22 @@ type UDPTransport struct {
 	failed             error
 	closed             bool
 	closeErr           error
+	sendSubmissions    uint64 // 仅在Queue接受整条应用消息后递增，供上层区分未提交与结果未知。
 }
 
 // NewUDPTransport 使用 conn 和显式 remote 创建空闲传输驱动，不执行 socket bind 或 connect。
 // 成功后接管 conn 的关闭责任；端点、socket 或核心配置无效时报错且不关闭 conn。
 // conn 必须是未连接且未被其他调用者使用的 UDP socket；不会从包内身份推断或更换端点。
 func NewUDPTransport(conn *net.UDPConn, remote netip.AddrPort, config ENetConfig) (*UDPTransport, error) {
-	if conn == nil || conn.RemoteAddr() != nil {
+	if conn == nil {
+		return nil, fmt.Errorf("UDP 传输需要显式、未连接的 socket")
+	}
+	return newUDPTransport(conn, remote, config)
+}
+
+// newUDPTransport 允许Host传入独占虚拟端点，关闭只影响该端点，不影响共享socket。
+func newUDPTransport(conn packetConn, remote netip.AddrPort, config ENetConfig) (*UDPTransport, error) {
+	if conn.RemoteAddr() != nil {
 		return nil, fmt.Errorf("UDP 传输需要显式、未连接的 socket")
 	}
 	if !remote.IsValid() || remote.Port() == 0 || remote.Addr().IsUnspecified() || remote.Addr().IsMulticast() || remote.Addr().Unmap() == netip.AddrFrom4([4]byte{255, 255, 255, 255}) {
@@ -91,6 +100,7 @@ func (t *UDPTransport) Send(ctx context.Context, data []byte) error {
 	if err != nil {
 		return err
 	}
+	t.sendSubmissions++
 	if err = t.apply(ctx, events); err == nil {
 		err = t.pump(ctx, func(s ENetStatus) bool { return s.State == ENetConnected && s.PendingCommands == 0 })
 	}

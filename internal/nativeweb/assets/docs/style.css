@@ -1,0 +1,77 @@
+/* 本文件补充 Swagger UI 文档页的导航、发送警示与窄屏布局；官方样式保持原样。 */
+html {
+  color-scheme: light;
+  background: #fafafa;
+}
+
+body {
+  margin: 0;
+  color: #263238;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.docs-header {
+  box-sizing: border-box;
+  max-width: 1460px;
+  margin: 0 auto;
+  padding: 24px 20px 8px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.docs-header nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+}
+
+.docs-header a {
+  color: #1759a8;
+  text-underline-offset: 3px;
+}
+
+.docs-header a:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+}
+
+.docs-header h1 {
+  margin: 16px 0;
+  font-size: clamp(1.5rem, 4vw, 2rem);
+}
+
+.docs-header code {
+  overflow-wrap: anywhere;
+}
+
+.send-warning {
+  padding: 12px 16px;
+  border-left: 4px solid #995a00;
+  border-radius: 4px;
+  background: #fff1d6;
+  color: #633800;
+}
+
+.swagger-ui .wrapper {
+  padding: 0 20px;
+}
+
+noscript {
+  display: block;
+  margin: 20px;
+}
+
+@media (max-width: 600px) {
+  .docs-header {
+    padding: 16px 12px 8px;
+  }
+
+  .swagger-ui .wrapper {
+    padding: 0 12px;
+  }
+
+  .swagger-ui .opblock .opblock-summary-path {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}

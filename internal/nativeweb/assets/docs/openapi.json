@@ -1,0 +1,1716 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "内网通独立原生消息网关",
+    "version": "1.0.0",
+    "description": "本文件定义公开原生 HTTP 接口与原网页接口，供离线 Swagger UI 使用。初版无鉴权，不使用 token、登录或 Authorization。\n\n**发送接口会发送真实消息**：文档加载不提交 POST，只有操作者明确 Try it out 并 Execute 才执行。每次公开 /send/* 调用由服务端生成新 request_id，不自动重试，不保证跨 HTTP 重复请求幂等；错误、超时或重定向后不能直接补发。fetch 禁止自动跟随重定向，避免 307/308 自动重复 POST。所有发送结果是原生协议结果，不是 IPC 结果；delivery 始终为 unknown，submitted、传输确认、业务确认及回执均不能代替独立接收观察。\n\n正文限制为 1..4096 UTF-8 字节，而非 4096 字符。保留实际换行，不把字面反斜杠 n 转换为换行。此预算不是厂商上限，也不代表所有长度已经真实验收。名称逐字精确匹配，保留大小写和空格；不按在线状态或列表顺序挑选同名目标。联系人及群列表都不是全网络或全部群的穷尽列表。所有示例均为合成数据。"
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "公开接口",
+      "description": "读取状态与目标，或明确提交一次原生消息；发送 request_id 由服务端生成。"
+    },
+    {
+      "name": "原网页接口",
+      "description": "现有聊天网页使用的同一后台会话；不需要 X-NWT-Request。消息请求由调用方提供 request_id，仅同一后台会话内相同标识及相同目标、正文只调用协议一次。"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "公开接口"
+        ],
+        "operationId": "getHealth",
+        "summary": "检查后台是否已进入 online 阶段",
+        "description": "仅后台 phase=online 时 status=ready 并返回 200，其余返回 503。Host 已准备接收发现但尚无 peer 时也可 ready，此时 online_contacts 明确为 0；ready 不保证全部 peer 在线或任何特定目标可发送。",
+        "responses": {
+          "200": {
+            "description": "后台 online；不代表任何消息已送达。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "后台未进入 online、已退出或启动失败，status=unavailable。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/InvalidOrigin"
+          }
+        }
+      }
+    },
+    "/contacts": {
+      "get": {
+        "tags": [
+          "公开接口"
+        ],
+        "operationId": "getContacts",
+        "summary": "列出联系人，或按非空精确名称查找",
+        "description": "不带或传入空 name 返回本独立身份已知的联系人列表，complete 恒为 false。带 name 则精确匹配所有联系人，不去除空格、不改变大小写、不根据在线状态或顺序挑选；唯一结果也不保证在线。",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExactName"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "无 name 时为联系人列表；有 name 且唯一时为 status=unique、恰有一个候选。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ContactList"
+                    },
+                    {
+                      "$ref": "#/components/schemas/UniqueContact"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidName"
+          },
+          "404": {
+            "description": "没有精确同名联系人。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFound"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "有多个精确同名联系人，返回全部同名候选。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmbiguousContacts"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/InvalidOrigin"
+          }
+        }
+      }
+    },
+    "/groups": {
+      "get": {
+        "tags": [
+          "公开接口"
+        ],
+        "operationId": "getGroups",
+        "summary": "列出已同步群，或按非空精确名称查找",
+        "description": "仅列出本次正常同步的已加入群，complete 恒为 false，不保证列出全部群。name 的大小写和空格原样参与匹配；同名时返回全部候选，不根据 sendable 或顺序自动选择。 省略或空name返回列表。",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExactName"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "无 name 时为群列表；有 name 且唯一时为 status=unique、恰有一个候选。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/GroupList"
+                    },
+                    {
+                      "$ref": "#/components/schemas/UniqueGroup"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidName"
+          },
+          "404": {
+            "description": "没有精确同名群。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFound"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "有多个精确同名群，返回全部同名候选。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmbiguousGroups"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/InvalidOrigin"
+          }
+        }
+      }
+    },
+    "/send/user": {
+      "post": {
+        "tags": [
+          "公开接口"
+        ],
+        "operationId": "sendUser",
+        "summary": "发送一条真实单聊消息（1004）",
+        "description": "user_id 与 name 必须且只能提供一个非空字符串。拒绝 group_id、调用方 request_id、其他未知字段、重复字段、非字符串、null、尾随 JSON、非法 UTF-8 及超限输入。正文保留实际换行，不解释字面 \\n。服务端生成 request_id，每次调用都是新请求，不自动重试，也没有跨 HTTP 请求幂等保证。HTTP 错误时也可能已提交，必须保留本次编号、submitted 和 delivery=unknown；不要换目标、换标识或重复点击补发。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendUserRequest"
+              },
+              "example": {
+                "user_id": "synthetic-user-001",
+                "text": "合成单聊示例：第一行\n第二行"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Submitted"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidSend"
+          },
+          "404": {
+            "$ref": "#/components/responses/UnknownSendTarget"
+          },
+          "409": {
+            "description": "名称歧义时包含所有同名候选，不发送。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmbiguousContacts"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/SendUnavailable"
+          },
+          "502": {
+            "$ref": "#/components/responses/ProtocolFailure"
+          },
+          "500": {
+            "$ref": "#/components/responses/SendIOFailure"
+          },
+          "403": {
+            "$ref": "#/components/responses/InvalidOrigin"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedContentType"
+          },
+          "408": {
+            "$ref": "#/components/responses/SendRequestTimeout"
+          }
+        }
+      }
+    },
+    "/send/group": {
+      "post": {
+        "tags": [
+          "公开接口"
+        ],
+        "operationId": "sendGroup",
+        "summary": "发送一条真实群聊消息（3011）",
+        "description": "group_id 与 name 必须且只能提供一个非空字符串。拒绝 user_id、调用方 request_id、其他未知字段、重复字段、非字符串、null、尾随 JSON、非法 UTF-8 及超限输入。当前仅支持完整成员恰为本机与一个已连接成员的群，不支持多成员群投递，不主动入群。每次调用由服务端生成新 request_id，不自动重试，不保证跨 HTTP 请求幂等。实际换行原样保留，不解释字面 \\n。失败也可能已提交，delivery 仍为 unknown，不能自动补发。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendGroupRequest"
+              },
+              "example": {
+                "group_id": "synthetic-group-001",
+                "text": "合成群聊示例：仅在明确授权后执行"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Submitted"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidSend"
+          },
+          "404": {
+            "$ref": "#/components/responses/UnknownSendTarget"
+          },
+          "409": {
+            "description": "名称歧义时返回所有同名群；当前群投递不支持时返回 error，不发送。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AmbiguousGroups"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/SendUnavailable"
+          },
+          "502": {
+            "$ref": "#/components/responses/ProtocolFailure"
+          },
+          "500": {
+            "$ref": "#/components/responses/SendIOFailure"
+          },
+          "403": {
+            "$ref": "#/components/responses/InvalidOrigin"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedContentType"
+          },
+          "408": {
+            "$ref": "#/components/responses/SendRequestTimeout"
+          }
+        }
+      }
+    },
+    "/api/state": {
+      "get": {
+        "tags": [
+          "原网页接口"
+        ],
+        "operationId": "getPageState",
+        "summary": "读取后台会话与网页快照",
+        "description": "只读，不上线、不创建连接。events 为最近至多 128 条阶段记录，不含聊天正文。",
+        "responses": {
+          "200": {
+            "description": "当前后台状态。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/State"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/InvalidOrigin"
+          }
+        }
+      }
+    },
+    "/api/contacts": {
+      "get": {
+        "tags": [
+          "原网页接口"
+        ],
+        "operationId": "getPageContacts",
+        "summary": "读取原网页联系人列表",
+        "responses": {
+          "200": {
+            "description": "不穷尽网络的联系人快照，complete=false。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageContactList"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/InvalidOrigin"
+          }
+        }
+      }
+    },
+    "/api/groups": {
+      "get": {
+        "tags": [
+          "原网页接口"
+        ],
+        "operationId": "getPageGroups",
+        "summary": "读取原网页已同步群列表",
+        "responses": {
+          "200": {
+            "description": "不穷尽全部群的快照，complete=false。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageGroupList"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/InvalidOrigin"
+          }
+        }
+      }
+    },
+    "/api/session/start": {
+      "post": {
+        "tags": [
+          "原网页接口"
+        ],
+        "operationId": "startPageSession",
+        "summary": "使用可选的本机名称启动一次后台原生会话",
+        "description": "离线或上次失败后才能上线。可提供name作为本次显示名称；只改显示名，保留原独立身份和联系人，不在在线期间改名。省略name的空对象沿用本进程当前名称；显式空名、纯空白、换行或控制字符返回400，不静默使用旧名。成功受理后本进程记住名称，重启仍使用CLI配置。此接口会真实建立连接，需要确认身份、范围及时长；不自动重连，202只表示已受理。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartSessionRequest"
+              },
+              "example": {
+                "name": "自定义网关名称"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "已受理启动。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/State"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidJSON"
+          },
+          "409": {
+            "description": "会话正在运行、退出或程序关闭，或启动前记录创建等操作失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/InvalidOrigin"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedContentType"
+          }
+        }
+      }
+    },
+    "/api/session/stop": {
+      "post": {
+        "tags": [
+          "原网页接口"
+        ],
+        "operationId": "stopPageSession",
+        "summary": "明确请求后台正常下线",
+        "description": "请求体必须是空对象，不需要 X-NWT-Request。已离线时无操作；202 不表示清理已经完成。会中断尚未完成的发送，但不会把未知结果改成未发送。",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/EmptyObject"
+        },
+        "responses": {
+          "202": {
+            "description": "已受理停止，返回当前状态。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/State"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidJSON"
+          },
+          "403": {
+            "$ref": "#/components/responses/InvalidOrigin"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedContentType"
+          }
+        }
+      }
+    },
+    "/api/messages/user": {
+      "post": {
+        "tags": [
+          "原网页接口"
+        ],
+        "operationId": "sendPageUserMessage",
+        "summary": "以调用方 request_id 提交一条真实单聊消息",
+        "description": "request_id 为必需的 8..128 个 ASCII 字母、数字、连字符或下划线。不需要 X-NWT-Request。同一后台会话内相同 request_id、目标与正文只调用协议一次；相同标识但内容不同返回 409。去重不跨重新上线或进程重启，每会话最多 1024 个标识。关闭网页不会取消已受理发送；不要自动重试、换标识或新会话补发。正文 1..4096 UTF-8 字节，换行原样保留。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageUserMessageRequest"
+              },
+              "example": {
+                "request_id": "synthetic_request_0001",
+                "user_id": "synthetic-user-001",
+                "text": "合成网页单聊示例"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/PageMessageResult"
+          },
+          "400": {
+            "$ref": "#/components/responses/PageInvalidMessage"
+          },
+          "409": {
+            "$ref": "#/components/responses/PageMessageConflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/PageInvalidContent"
+          },
+          "502": {
+            "$ref": "#/components/responses/PageProtocolFailure"
+          },
+          "500": {
+            "$ref": "#/components/responses/PageIOFailure"
+          },
+          "408": {
+            "$ref": "#/components/responses/PageRequestTimeout"
+          },
+          "403": {
+            "$ref": "#/components/responses/InvalidOrigin"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedContentType"
+          }
+        }
+      }
+    },
+    "/api/messages/group": {
+      "post": {
+        "tags": [
+          "原网页接口"
+        ],
+        "operationId": "sendPageGroupMessage",
+        "summary": "以调用方 request_id 提交一条真实群聊消息",
+        "description": "与原网页单聊使用同一后台会话及相同的请求标识去重规则，request_id 必需。不需要 X-NWT-Request。当前群聊仅支持完整成员恰为本机与一个已连接成员的群；不自动重试，不保证跨后台会话幂等。正文按 UTF-8 字节计限并保留实际换行，delivery 始终 unknown。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageGroupMessageRequest"
+              },
+              "example": {
+                "request_id": "synthetic_request_0002",
+                "group_id": "synthetic-group-001",
+                "text": "合成网页群聊示例"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/PageMessageResult"
+          },
+          "400": {
+            "$ref": "#/components/responses/PageInvalidMessage"
+          },
+          "409": {
+            "$ref": "#/components/responses/PageMessageConflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/PageInvalidContent"
+          },
+          "502": {
+            "$ref": "#/components/responses/PageProtocolFailure"
+          },
+          "500": {
+            "$ref": "#/components/responses/PageIOFailure"
+          },
+          "408": {
+            "$ref": "#/components/responses/PageRequestTimeout"
+          },
+          "403": {
+            "$ref": "#/components/responses/InvalidOrigin"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedContentType"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "ExactName": {
+        "name": "name",
+        "in": "query",
+        "required": false,
+        "allowEmptyValue": true,
+        "description": "可选精确名称，保留大小写和全部空格；不按在线状态或候选顺序消除歧义。省略或显式空名称时返回列表，与远端main一致。",
+        "schema": {
+          "type": "string"
+        },
+        "example": "合成联系人甲"
+      }
+    },
+    "requestBodies": {
+      "EmptyObject": {
+        "required": true,
+        "description": "必须是空 JSON 对象，不能省略、为 null 或包含未知字段。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "maxProperties": 0
+            },
+            "example": {}
+          }
+        }
+      }
+    },
+    "responses": {
+      "InvalidName": {
+        "description": "查询参数编码非法，或name参数重复。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "InvalidJSON": {
+        "description": "JSON 格式或字段非法：未知、重复、缺失、非字符串、null、尾随 JSON、非法 UTF-8 或超限。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Submitted": {
+        "description": "本次原生协议操作返回结果，不表示独立接收或送达。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/SendResponse"
+            }
+          }
+        }
+      },
+      "InvalidSend": {
+        "description": "JSON、目标选择或正文非法；目标 ID 与名称必须且只能提供一个非空字符串。拒绝对方种类 ID、调用方 request_id、未知或重复字段、非字符串、null、尾随 JSON、非法 UTF-8 及超限。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "UnknownSendTarget": {
+        "description": "未知目标 ID 或没有精确同名目标，不发送。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Error"
+                },
+                {
+                  "$ref": "#/components/schemas/NotFound"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "SendUnavailable": {
+        "description": "后台未就绪、目标当前连接离线或本会话预算耗尽。若已生成请求标识则保留原生结果，不能据此自动补发。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Error"
+                },
+                {
+                  "$ref": "#/components/schemas/SendResponse"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "ProtocolFailure": {
+        "description": "原生协议提交错误，仍返回本次 request_id、message_id、submitted 等事实，delivery=unknown，不能自动重试。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/SendResponse"
+            }
+          }
+        }
+      },
+      "SendIOFailure": {
+        "description": "记录或随机源 I/O 错误。若已取得本次协议结果则保留所有字段；若尚未分配请求则返回 error。不得因为错误自动生成新请求补发。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Error"
+                },
+                {
+                  "$ref": "#/components/schemas/SendResponse"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "PageMessageResult": {
+        "description": "原网页请求的原生协议结果，delivery=unknown，不表示独立接收。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/MessageResponse"
+            }
+          }
+        }
+      },
+      "PageInvalidMessage": {
+        "description": "JSON 或 request_id 非法；JSON 解析失败仅返回 error，标识校验失败返回 MessageResponse。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Error"
+                },
+                {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "PageMessageConflict": {
+        "description": "后台未就绪或正在退出、request_id 已用于不同内容，或本会话已经达到 1024 条标识预算。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/MessageResponse"
+            }
+          }
+        }
+      },
+      "PageInvalidContent": {
+        "description": "目标或正文不符合原生模块规则，包括空正文、超过 4096 UTF-8 字节或非法文本。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/MessageResponse"
+            }
+          }
+        }
+      },
+      "PageProtocolFailure": {
+        "description": "原生提交失败；仍保留原 request_id、结果内 message_id、submitted 和 unknown，不能推断未发送。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/MessageResponse"
+            }
+          }
+        }
+      },
+      "PageIOFailure": {
+        "description": "记录写入或 Sync 失败，停止会话；已取得的提交事实仍保留。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/MessageResponse"
+            }
+          }
+        }
+      },
+      "PageRequestTimeout": {
+        "description": "受理前请求取消，或等待同标识操作期间请求取消。后者仍由后台处理，应先核实同一 request_id 的结果，不要新建标识补发。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/MessageResponse"
+            }
+          }
+        }
+      },
+      "SendRequestTimeout": {
+        "description": "请求在受理前取消，返回本次标识及未提交事实。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/SendResponse"
+            }
+          }
+        }
+      },
+      "UnsupportedContentType": {
+        "description": "写入接口只接受application/json，可附带charset参数。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "InvalidOrigin": {
+        "description": "Host或浏览器Origin不匹配，或Sec-Fetch-Site标为跨站；这不是鉴权，不需要任何凭据。",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "明确的错误原因，不包含聊天正文。"
+          }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "phase",
+          "own_user_id",
+          "name",
+          "discovery_mode",
+          "online_contacts",
+          "contacts_count",
+          "groups_count",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "unavailable"
+            ],
+            "description": "仅 phase=online 时 ready。"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/Phase"
+          },
+          "own_user_id": {
+            "type": "string",
+            "description": "本独立身份原始 ID；身份尚未生成时为空。",
+            "example": "synthetic-own-001"
+          },
+          "name": {
+            "type": "string",
+            "description": "本独立节点名称。",
+            "example": "合成节点甲"
+          },
+          "discovery_mode": {
+            "$ref": "#/components/schemas/DiscoveryMode"
+          },
+          "online_contacts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "当前实际完成握手并在线的联系人数；Host 无 peer 时为 0，即使 status=ready。"
+          },
+          "contacts_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "当前已知联系人条目数，不是网络总人数。"
+          },
+          "groups_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "当前已同步群条目数，不是全部群数量。"
+          },
+          "error": {
+            "type": "string",
+            "description": "后台错误，无错误时为空。"
+          }
+        }
+      },
+      "Phase": {
+        "type": "string",
+        "enum": [
+          "offline",
+          "starting",
+          "online",
+          "stopping",
+          "failed"
+        ],
+        "description": "后台会话阶段；online 不意味着全部 peer 在线。"
+      },
+      "DiscoveryMode": {
+        "type": "string",
+        "enum": [
+          "single_peer",
+          "subnet"
+        ],
+        "description": "显式单对端或子网正常发现模式。"
+      },
+      "ContactView": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "user_id",
+          "name",
+          "discovery",
+          "online",
+          "sendable",
+          "reason"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "description": "正常握手得到的原始身份 ID；不猜测或按名称替代。",
+            "example": "synthetic-user-001"
+          },
+          "name": {
+            "type": "string",
+            "description": "联系人原始名称，精确比较时保留大小写和空格。",
+            "example": "合成联系人甲"
+          },
+          "discovery": {
+            "type": "string",
+            "description": "实际发现端点，IPv4:port；条目存在不等于在线。",
+            "example": "192.0.2.10:9011"
+          },
+          "online": {
+            "type": "boolean",
+            "description": "此身份当前连接已完成正常握手。"
+          },
+          "sendable": {
+            "type": "boolean",
+            "description": "当前可作为单聊目标；提交时仍检查实际连接。"
+          },
+          "reason": {
+            "type": "string",
+            "description": "不可发送的具体原因；可发送时为空。"
+          }
+        }
+      },
+      "GroupView": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "group_id",
+          "name",
+          "master_id",
+          "info_version",
+          "user_version",
+          "members",
+          "sendable",
+          "reason"
+        ],
+        "properties": {
+          "group_id": {
+            "type": "string",
+            "description": "正常群同步取得的原始群 ID。",
+            "example": "synthetic-group-001"
+          },
+          "name": {
+            "type": "string",
+            "description": "原始群名称，精确比较时保留大小写和空格。",
+            "example": "合成群甲"
+          },
+          "master_id": {
+            "type": "string",
+            "description": "正常同步取得的群主身份。",
+            "example": "synthetic-own-001"
+          },
+          "info_version": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "群资料版本，无符号 64 位整数；范围 0..18446744073709551615。客户端应避免浮点精度丢失。"
+          },
+          "user_version": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "群成员版本，无符号 64 位整数；范围 0..18446744073709551615。客户端应避免浮点精度丢失。"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "已确认的完整成员 ID 快照，不从历史成员猜测当前群。",
+            "example": [
+              "synthetic-own-001",
+              "synthetic-user-001"
+            ]
+          },
+          "sendable": {
+            "type": "boolean",
+            "description": "完整成员恰为本机与一个已连接成员且后台就绪时才可发送；不支持多成员群投递。"
+          },
+          "reason": {
+            "type": "string",
+            "description": "不可发送的具体原因；可发送时为空。"
+          }
+        }
+      },
+      "ContactList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "contacts",
+          "complete",
+          "own_user_id",
+          "source"
+        ],
+        "properties": {
+          "contacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContactView"
+            }
+          },
+          "complete": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "description": "列表不穷尽网络。"
+          },
+          "own_user_id": {
+            "type": "string",
+            "description": "列表所属的独立身份；未生成时为空。"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "native_protocol"
+            ]
+          }
+        }
+      },
+      "GroupList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "groups",
+          "complete",
+          "own_user_id",
+          "source"
+        ],
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupView"
+            }
+          },
+          "complete": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "description": "列表不穷尽全部群。"
+          },
+          "own_user_id": {
+            "type": "string",
+            "description": "列表所属的独立身份；未生成时为空。"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "native_protocol"
+            ]
+          }
+        }
+      },
+      "UniqueContact": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "candidates"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "unique"
+            ]
+          },
+          "candidates": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/ContactView"
+            },
+            "description": "唯一精确同名候选，不保证在线。"
+          }
+        }
+      },
+      "UniqueGroup": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "candidates"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "unique"
+            ]
+          },
+          "candidates": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/GroupView"
+            },
+            "description": "唯一精确同名候选，不保证可发送。"
+          }
+        }
+      },
+      "NotFound": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_found"
+            ]
+          },
+          "error": {
+            "type": "string",
+            "description": "无精确匹配目标的原因。"
+          }
+        }
+      },
+      "AmbiguousContacts": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "error",
+          "candidates"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ambiguous"
+            ]
+          },
+          "error": {
+            "type": "string",
+            "description": "精确同名联系人不唯一，不自动选择。"
+          },
+          "candidates": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "$ref": "#/components/schemas/ContactView"
+            },
+            "description": "全部精确同名联系人，包括离线条目。"
+          }
+        }
+      },
+      "AmbiguousGroups": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "error",
+          "candidates"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ambiguous"
+            ]
+          },
+          "error": {
+            "type": "string",
+            "description": "精确同名群不唯一，不自动选择。"
+          },
+          "candidates": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "$ref": "#/components/schemas/GroupView"
+            },
+            "description": "全部精确同名群，不按 sendable 筛掉候选。"
+          }
+        }
+      },
+      "MessageText": {
+        "type": "string",
+        "minLength": 1,
+        "x-max-utf8-bytes": 4096,
+        "description": "完整正文，必须是合法 UTF-8 且符合原生文本编码规则，长度 1..4096 UTF-8 字节，不是字符数；OpenAPI maxLength 按字符计，故不用于表示此字节预算。实际换行原样保留，不解释字面 \\n；不做 IPC 字面换行转换。",
+        "example": "合成正文：第一行\n第二行"
+      },
+      "SendUserRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text"
+        ],
+        "description": "user_id 与 name 必须且只能出现一个，且非空。拒绝 group_id、request_id、未知或重复字段、null、非字符串、尾随 JSON 及超限输入。",
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "原始联系人 ID，与 name 互斥。",
+            "example": "synthetic-user-001"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "非空精确名称，与 user_id 互斥；保留大小写与空格。",
+            "example": "合成联系人甲"
+          },
+          "text": {
+            "$ref": "#/components/schemas/MessageText"
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "user_id"
+            ],
+            "not": {
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "required": [
+              "name"
+            ],
+            "not": {
+              "required": [
+                "user_id"
+              ]
+            }
+          }
+        ]
+      },
+      "SendGroupRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text"
+        ],
+        "description": "group_id 与 name 必须且只能出现一个，且非空。拒绝 user_id、request_id、未知或重复字段、null、非字符串、尾随 JSON 及超限输入。",
+        "properties": {
+          "group_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "原始群 ID，与 name 互斥。",
+            "example": "synthetic-group-001"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "非空精确名称，与 group_id 互斥；保留大小写与空格。",
+            "example": "合成群甲"
+          },
+          "text": {
+            "$ref": "#/components/schemas/MessageText"
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "group_id"
+            ],
+            "not": {
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "required": [
+              "name"
+            ],
+            "not": {
+              "required": [
+                "group_id"
+              ]
+            }
+          }
+        ]
+      },
+      "SendResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "公开发送的顶层扁平原生结果，不包含 IPC 字段，也不嵌套 result。错误时仍保留已分配编号及提交事实。",
+        "required": [
+          "request_id",
+          "command",
+          "message_id",
+          "submitted",
+          "transport_acknowledged",
+          "business_acknowledged",
+          "receipt_received",
+          "delivery"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "description": "服务端为本次调用生成的请求标识，不接受调用方指定。",
+            "example": "synthetic-server-request-001"
+          },
+          "command": {
+            "type": "integer",
+            "format": "int64",
+            "enum": [
+              1004,
+              3011
+            ],
+            "description": "1004 单聊，3011 群聊。"
+          },
+          "message_id": {
+            "type": "string",
+            "description": "原生消息编号；提交前失败时可为空。",
+            "example": "1"
+          },
+          "submitted": {
+            "type": "boolean",
+            "description": "本次原生消息是否已提交；不等于对方收到。"
+          },
+          "transport_acknowledged": {
+            "type": "boolean",
+            "description": "是否观察到传输确认，不等于独立接收。"
+          },
+          "business_acknowledged": {
+            "type": "boolean",
+            "description": "是否观察到匹配的业务 ACK；不称为已读。"
+          },
+          "receipt_received": {
+            "type": "boolean",
+            "description": "是否观察到匹配的协议回执；不称为已读或独立送达。"
+          },
+          "delivery": {
+            "type": "string",
+            "enum": [
+              "unknown"
+            ],
+            "description": "始终未知，协议确认不能证明独立接收。"
+          },
+          "error": {
+            "type": "string",
+            "description": "可选错误说明；非空也不能丢弃已提交事实。"
+          }
+        }
+      },
+      "PageContactList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "contacts",
+          "complete"
+        ],
+        "properties": {
+          "contacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContactView"
+            }
+          },
+          "complete": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          }
+        }
+      },
+      "PageGroupList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "groups",
+          "complete"
+        ],
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupView"
+            }
+          },
+          "complete": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          }
+        }
+      },
+      "State": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "phase",
+          "name",
+          "own_user_id",
+          "remote",
+          "discovery_mode",
+          "started_at",
+          "error",
+          "stage",
+          "contacts",
+          "groups",
+          "events",
+          "max_text_bytes"
+        ],
+        "properties": {
+          "phase": {
+            "$ref": "#/components/schemas/Phase"
+          },
+          "name": {
+            "type": "string",
+            "description": "本进程当前显示名称；成功受理带name的上线请求后更新，不是节点UserID。",
+            "example": "合成节点甲"
+          },
+          "own_user_id": {
+            "type": "string",
+            "description": "本独立身份 ID；未生成时为空。",
+            "example": "synthetic-own-001"
+          },
+          "remote": {
+            "type": "string",
+            "description": "single_peer 时为配置的 IPv4:port；subnet 时为发现子网 CIDR。",
+            "example": "192.0.2.10:9011"
+          },
+          "discovery_mode": {
+            "$ref": "#/components/schemas/DiscoveryMode"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "最近一次明确启动时间；尚未启动时为 null。"
+          },
+          "error": {
+            "type": "string",
+            "description": "后台错误，无错误时为空。"
+          },
+          "stage": {
+            "type": "string",
+            "description": "最近观察到的协议阶段；不等同于后台 phase。"
+          },
+          "contacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContactView"
+            }
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupView"
+            }
+          },
+          "events": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "$ref": "#/components/schemas/ClientEvent"
+            },
+            "description": "最近有限阶段记录，不含入站或出站聊天正文。"
+          },
+          "max_text_bytes": {
+            "type": "integer",
+            "enum": [
+              4096
+            ],
+            "description": "正文最大 UTF-8 字节数，不是字符数。"
+          }
+        }
+      },
+      "ClientEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "stage",
+          "elapsed_ms"
+        ],
+        "properties": {
+          "stage": {
+            "type": "string",
+            "description": "协议阶段或事件名称。"
+          },
+          "command": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "maximum": 4294967295,
+            "description": "可选原生命令编号。"
+          },
+          "role": {
+            "type": "string",
+            "description": "可选连接角色。"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "awaiting_node",
+              "handshaking",
+              "readying",
+              "online",
+              "closing",
+              "closed"
+            ],
+            "description": "可选对端协议状态。"
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "自本次运行开始经过的毫秒数。"
+          },
+          "message_versions": {
+            "type": "string",
+            "description": "可选协议版本资料原文。"
+          },
+          "disconnect_data": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "maximum": 4294967295,
+            "description": "可选传输断开资料。"
+          },
+          "message_id": {
+            "type": "string",
+            "description": "可选关联的原生消息编号。"
+          },
+          "peer_index": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65535,
+            "description": "可选 Host 内部连接序号，不是身份或名称。"
+          },
+          "error": {
+            "type": "string",
+            "description": "可选运行错误，不含聊天正文。"
+          }
+        }
+      },
+      "PageRequestID": {
+        "type": "string",
+        "minLength": 8,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9_-]{8,128}$",
+        "description": "调用方提供的原网页请求标识；仅同一后台会话内相同标识、目标与正文只调用一次。与原生 message_id 不同，不跨会话幂等。",
+        "example": "synthetic_request_0001"
+      },
+      "PageUserMessageRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "user_id",
+          "text"
+        ],
+        "properties": {
+          "request_id": {
+            "$ref": "#/components/schemas/PageRequestID"
+          },
+          "user_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "原始单聊目标 ID，不接受 group_id 或名称。",
+            "example": "synthetic-user-001"
+          },
+          "text": {
+            "$ref": "#/components/schemas/MessageText"
+          }
+        }
+      },
+      "PageGroupMessageRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "group_id",
+          "text"
+        ],
+        "properties": {
+          "request_id": {
+            "$ref": "#/components/schemas/PageRequestID"
+          },
+          "group_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "原始群聊目标 ID，不接受 user_id 或名称。",
+            "example": "synthetic-group-001"
+          },
+          "text": {
+            "$ref": "#/components/schemas/MessageText"
+          }
+        }
+      },
+      "ChatResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "command",
+          "message_id",
+          "submitted",
+          "transport_acknowledged",
+          "business_acknowledged",
+          "receipt_received",
+          "delivery"
+        ],
+        "properties": {
+          "command": {
+            "type": "integer",
+            "format": "int64",
+            "enum": [
+              1004,
+              3011
+            ],
+            "description": "1004 单聊或 3011 群聊。"
+          },
+          "message_id": {
+            "type": "string",
+            "description": "本次原生消息编号，提交前错误可为空。"
+          },
+          "submitted": {
+            "type": "boolean",
+            "description": "是否已提交，不等于独立接收。"
+          },
+          "transport_acknowledged": {
+            "type": "boolean",
+            "description": "是否收到传输确认。"
+          },
+          "business_acknowledged": {
+            "type": "boolean",
+            "description": "是否收到匹配的业务 ACK，不表示已读。"
+          },
+          "receipt_received": {
+            "type": "boolean",
+            "description": "是否收到匹配的协议回执，不表示独立送达。"
+          },
+          "delivery": {
+            "type": "string",
+            "enum": [
+              "unknown"
+            ],
+            "description": "始终未知。"
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "result",
+          "error"
+        ],
+        "description": "原网页专用嵌套格式，与公开 /send/* 的扁平 SendResponse 不同；不是 IPC 结果。",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "description": "原网页调用方提供的标识；非法输入错误时可能不满足 PageRequestID。"
+          },
+          "result": {
+            "$ref": "#/components/schemas/ChatResult"
+          },
+          "error": {
+            "type": "string",
+            "description": "错误说明，无错误时为空。错误时仍保留本次原生提交事实。"
+          }
+        }
+      },
+      "StartSessionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "省略name沿用当前名称；提供时必须非空、合法UTF-8、无控制字符并符合原生资料编码。只允许离线时改变本次显示名，不改变身份。",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "本次上线显示名称。保留有效名称的原始空格，不截断或自动替换。",
+            "example": "自定义网关名称"
+          }
+        }
+      }
+    }
+  }
+}

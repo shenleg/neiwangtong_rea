@@ -348,6 +348,10 @@ func encodeMessageElement(encoder *xml.Encoder, element messageElement) error {
 }
 
 func decodeMessage(frame Frame, command uint32, name string) (messageElement, error) {
+	return decodeMessageEntities(frame, command, name, nil)
+}
+
+func decodeMessageEntities(frame Frame, command uint32, name string, entities map[string]string) (messageElement, error) {
 	if frame.Command != command {
 		return messageElement{}, fmt.Errorf("命令 %d 不匹配 %d/%s", frame.Command, command, name)
 	}
@@ -355,6 +359,7 @@ func decodeMessage(frame Frame, command uint32, name string) (messageElement, er
 		return messageElement{}, err
 	}
 	decoder := xml.NewDecoder(strings.NewReader(frame.Payload))
+	decoder.Entity = entities
 	for {
 		token, err := decoder.Token()
 		if err != nil {

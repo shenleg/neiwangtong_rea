@@ -1,4 +1,4 @@
-// 本文件将单对端发现、ENet、节点控制与应用握手串成限时新节点运行，不实现聊天或文件业务。
+// 本文件驱动单对端发现、ENet与应用握手；支持限时实验或常驻在线，并由同一调度循环串行发送聊天。
 package nativeproto
 
 import (
@@ -10,10 +10,11 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"sync/atomic"
 	"time"
 )
 
-// ClientConfig 明确本机公告、资料、唯一发现对端与时限；Duration 包含发现和握手，ShutdownTimeout 另用于退出。
+// ClientConfig 明确本机公告、资料、唯一发现对端与时限；Duration=0常驻，正值包含发现/握手，ShutdownTimeout另用于退出。
 // Profile 是调用者的本机资料，不会用远端或已有 Windows 身份补齐；RemoteDiscovery 不允许广播/扫描。
 type ClientConfig struct {
 	Node             NodePacket
@@ -24,6 +25,12 @@ type ClientConfig struct {
 	ShutdownTimeout  time.Duration
 	DiscoveryTimeout time.Duration
 	HandshakeTimeout time.Duration
+	Contacts         *Directory             // 单聊时必须提供属于本身份的联系人目录；启用LearnContacts或只上线时可为nil。
+	LearnContacts    bool                   // 显式允许双向READY后学习当前已验证对端；默认保留目录必需语义。
+	ObserveDirectory func(*Directory) error // 可选；串行持久化学习后的目录，成功才发布，不能在回调中同步发送。
+	Chat             *ChatRequest           // nil 只上线；非 nil 在就绪后向选定联系人提交一条消息，不自动重试。
+	GroupChat        bool                   // 显式启用群同步和3011；不自动入群或建立额外对端连接。
+	ObserveGroup     func(GroupInfo) error  // 可选；串行保存本身份群同步快照，出错即停止，不应在回调中同步发送。
 }
 
 // ClientEvent 是非正文的运行事实；不包含远端姓名、UserID、群信息或聊天内容。
@@ -35,9 +42,13 @@ type ClientEvent struct {
 	ElapsedMS       int64     `json:"elapsed_ms"`
 	MessageVersions *string   `json:"message_versions,omitempty"`
 	DisconnectData  *uint32   `json:"disconnect_data,omitempty"`
+	MessageID       string    `json:"message_id,omitempty"`
+	PeerIndex       uint16    `json:"peer_index,omitempty"` // Host内部连接序号，不是对端身份或名称。
+	Error           string    `json:"error,omitempty"`      // 明确运行错误，不含聊天正文。
 }
 
-// ClientResult 区分协议就绪与正常退出；ProtocolReady 只表示双向 1000/1018，不表示原客户端 UI 已独立确认。
+// ClientResult 区分运行就绪与正常退出；Client的ProtocolReady表示双向1000/1018，Host表示已准备接收发现。
+// 各身份真实就绪状态见Snapshot.OnlineUserIDs；这两种就绪都不表示原客户端UI已独立确认。
 type ClientResult struct {
 	ProtocolReady     bool           `json:"protocol_ready"`
 	GracefulExit      bool           `json:"graceful_exit"`
@@ -45,35 +56,56 @@ type ClientResult struct {
 	DiscoveryAttempts int            `json:"discovery_attempts"`
 	DiscoverySends    int            `json:"discovery_sends"`
 	UnhandledCommands map[uint32]int `json:"unhandled_commands"`
+	Chat              *ChatResult    `json:"chat,omitempty"` // 最近一次聊天快照，完整事件由observe保存。
+	ChatSends         int            `json:"chat_sends"`
 }
 
-// Client 拥有一次限时单对端运行；构造不发包，Run 开始后接管两个 socket 的关闭责任，不允许重用。
+// Client 拥有一次单对端运行；构造不发包，Run接管socket，SendUser/SendGroup交给Run串行处理，不并发操作UDP。
 type Client struct {
 	config               ClientConfig
-	discovery            *net.UDPConn
-	conn                 *net.UDPConn
+	discovery            packetConn
+	conn                 packetConn
 	handshake            []byte
 	localMessageVersions string
-	started              bool
+	lifecycle            atomic.Uint32
+	directory            atomic.Pointer[Directory]
+	snapshot             atomic.Pointer[ClientSnapshot]
+	requests             chan chatCall
+	done                 chan struct{}
+	chats                map[string]*ChatResult
+	groups               map[string]GroupInfo
+	groupPending         map[string]bool
+	chatOrder            []string
+	chatCursor           int
 	origin               time.Time
 	observe              func(ClientEvent) error
 	transport            *UDPTransport
 	peer                 *Peer
 	remoteNode           NodePacket
+	chat                 *preparedChat
+	contact              *Contact
 	result               ClientResult
 }
 
 // NewClient 验证 caller 已绑定的两个独立 socket、节点源地址/端口、资料和预算，返回尚未发包的实例。
 // 验证失败不关闭传入 socket；成功构造到 Run 开始前仍由调用者保管。无法匹配源地址/端口或广播目标时报错。
 func NewClient(discovery, conn *net.UDPConn, config ClientConfig) (*Client, error) {
-	if discovery == nil || conn == nil || discovery == conn || discovery.RemoteAddr() != nil || conn.RemoteAddr() != nil {
+	if discovery == nil || conn == nil {
+		return nil, fmt.Errorf("客户端需要两个明确绑定、未连接且互不相同的 UDP socket")
+	}
+	return newClient(discovery, conn, config)
+}
+
+// newClient 复用单对端协议循环；Host传入独立虚拟端点时仍验证其公告地址和端口。
+func newClient(discovery, conn packetConn, config ClientConfig) (*Client, error) {
+	if discovery == conn || discovery.RemoteAddr() != nil || conn.RemoteAddr() != nil {
 		return nil, fmt.Errorf("客户端需要两个明确绑定、未连接且互不相同的 UDP socket")
 	}
 	remote := config.RemoteDiscovery
 	if !remote.IsValid() || remote.Port() == 0 || !remote.Addr().Is4() || remote.Addr().IsUnspecified() || remote.Addr().IsMulticast() || remote.Addr() == netip.AddrFrom4([4]byte{255, 255, 255, 255}) {
 		return nil, fmt.Errorf("只允许明确指定的单个 IPv4 发现对端")
 	}
-	if config.Node.Type != 1 || config.Duration <= 0 || config.ShutdownTimeout <= 0 || config.DiscoveryTimeout <= 0 || config.HandshakeTimeout <= 0 {
+	if config.Node.Type != 1 || config.Duration < 0 || config.ShutdownTimeout <= 0 || config.DiscoveryTimeout <= 0 || config.HandshakeTimeout <= 0 {
 		return nil, fmt.Errorf("客户端节点类型或显式时限无效")
 	}
 	wire, err := config.Node.Encode()
@@ -112,25 +144,88 @@ func NewClient(discovery, conn *net.UDPConn, config ClientConfig) (*Client, erro
 			break
 		}
 	}
-	return &Client{config: config, discovery: discovery, conn: conn, handshake: handshake, localMessageVersions: versions,
-		result: ClientResult{UnhandledCommands: make(map[uint32]int)}}, nil
+	if config.GroupChat {
+		for _, name := range []string{"QGROUP", "QGROUP_MSG"} {
+			supported := false
+			for _, field := range config.Profile.Features {
+				if field.Name == name && supportsTextContent(field.Value) {
+					supported = true
+					break
+				}
+			}
+			if !supported {
+				return nil, fmt.Errorf("启用群同步与发送须声明兼容的%s版本", name)
+			}
+		}
+	}
+	if config.Contacts != nil && config.Contacts.OwnUserID() != config.Node.UserID {
+		return nil, fmt.Errorf("联系人列表不属于当前独立身份")
+	}
+	var chat *preparedChat
+	var chatResult *ChatResult
+	if config.Chat != nil {
+		if config.Chat.GroupID != "" {
+			return nil, fmt.Errorf("群聊须在同步成员资料后调用SendGroup，不接受启动Chat配置")
+		}
+		if !supportsTextContent(versions) {
+			return nil, fmt.Errorf("本机MSG声明不支持当前单聊正文版本")
+		}
+		if !config.LearnContacts {
+			if config.Contacts == nil {
+				return nil, fmt.Errorf("单聊需要当前独立身份自己的联系人列表")
+			}
+			contact, err := config.Contacts.ContactByID(config.Chat.UserID)
+			if err != nil {
+				return nil, err
+			}
+			if contact.Discovery != config.RemoteDiscovery {
+				return nil, fmt.Errorf("选定联系人的发现端点与运行目标不一致")
+			}
+		}
+		chat, chatResult, err = prepareChat(*config.Chat, config.Transport.MaxMessageBytes)
+		if err != nil {
+			return nil, err
+		}
+	}
+	client := &Client{config: config, discovery: discovery, conn: conn, handshake: handshake, localMessageVersions: versions, chat: chat,
+		requests: make(chan chatCall), done: make(chan struct{}), chats: make(map[string]*ChatResult), groups: make(map[string]GroupInfo), groupPending: make(map[string]bool),
+		result: ClientResult{UnhandledCommands: make(map[uint32]int), Chat: chatResult}}
+	if config.Contacts != nil {
+		client.directory.Store(&Directory{ownID: config.Node.UserID, contacts: config.Contacts.ListContacts()})
+	}
+	client.publishSnapshot()
+	return client, nil
 }
 
-// Run 在 ctx 与配置时限内只向明确对端发现一次，按双方会话 GUID 选择主动/被动并完成应用交换。
-// observe 必须记录每个阶段且返回错误时停止；所有错误均不重连、不换身份或重发应用请求。
-// 返回后 socket 均关闭；控制报文只证明协议运行，UI 在线验收由外部操作者另行确认。
+// Run 只向明确对端发现一次并交换握手；Duration=0时持续到ctx取消、对端退出或协议失败，正值保留限时实验。
+// observe串行保存阶段和逐条消息事件，返回错误即停止；可在其他协程调用SendUser/SendGroup，不可在回调中同步发送。
+// ctx主动取消时正常发送1017并断开；已提交中的发送被取消仍返回未知结果错误，不重连或重发；退出后socket关闭。
 func (c *Client) Run(ctx context.Context, observe func(ClientEvent) error) (result ClientResult, runErr error) {
-	if c.started {
-		return c.result, fmt.Errorf("客户端运行不能重用")
+	if !c.lifecycle.CompareAndSwap(clientIdle, clientRunning) {
+		return ClientResult{}, fmt.Errorf("客户端运行不能重用")
 	}
-	c.started = true
 	c.origin = time.Now()
 	c.observe = observe
-	hardEnd := c.origin.Add(c.config.Duration).Add(c.config.ShutdownTimeout)
-	runCtx, cancel := context.WithDeadline(ctx, hardEnd)
+	var activeEnd time.Time
+	runCtx, cancel := context.WithCancel(ctx)
+	if c.config.Duration > 0 {
+		activeEnd = c.origin.Add(c.config.Duration)
+		cancel()
+		runCtx, cancel = context.WithDeadline(ctx, activeEnd.Add(c.config.ShutdownTimeout))
+	}
 	defer cancel()
 	defer func() {
-		shutdownCtx, stop := context.WithDeadline(context.Background(), minTime(hardEnd, time.Now().Add(c.config.ShutdownTimeout)))
+		c.lifecycle.Store(clientStopped)
+		c.publishSnapshot()
+		defer close(c.done)
+		if ctx.Err() == context.Canceled && runErr == context.Canceled && c.result.ProtocolReady && c.transport.failed == nil {
+			runErr = nil // 空闲等待被调用方停止时执行正常退出；已提交失败仍由transport.failed保留。
+		}
+		shutdownBy := time.Now().Add(c.config.ShutdownTimeout)
+		if !activeEnd.IsZero() {
+			shutdownBy = minTime(shutdownBy, activeEnd.Add(c.config.ShutdownTimeout))
+		}
+		shutdownCtx, stop := context.WithDeadline(context.Background(), shutdownBy)
 		defer stop()
 		if c.transport != nil {
 			quitOK := c.peer != nil && c.peer.Status().RemoteQuit
@@ -170,6 +265,9 @@ func (c *Client) Run(ctx context.Context, observe func(ClientEvent) error) (resu
 		return c.result, err
 	}
 	c.remoteNode = remote
+	if c.chat != nil && c.chat.userID != remote.UserID {
+		return c.result, fmt.Errorf("发现的对端身份与明确聊天目标不一致，不建立聊天连接")
+	}
 	order, err := c.config.Node.SessionOrder(remote)
 	if err != nil {
 		return c.result, err
@@ -192,11 +290,11 @@ func (c *Client) Run(ctx context.Context, observe func(ClientEvent) error) (resu
 	if err != nil {
 		return c.result, err
 	}
-	c.transport, err = NewUDPTransport(c.conn, netip.AddrPortFrom(c.config.RemoteDiscovery.Addr(), remote.ENetPort), c.config.Transport)
+	c.transport, err = newUDPTransport(c.conn, netip.AddrPortFrom(c.config.RemoteDiscovery.Addr(), remote.ENetPort), c.config.Transport)
 	if err != nil {
 		return c.result, err
 	}
-	connectionCtx, stop := context.WithDeadline(runCtx, minTime(c.origin.Add(c.config.Duration), time.Now().Add(c.config.HandshakeTimeout)))
+	connectionCtx, stop := context.WithDeadline(runCtx, clientDeadline(activeEnd, c.config.HandshakeTimeout))
 	if order > 0 {
 		c.result.Role = "active"
 		err = c.transport.Connect(connectionCtx)
@@ -225,9 +323,8 @@ func (c *Client) Run(ctx context.Context, observe func(ClientEvent) error) (resu
 			return c.result, err
 		}
 	}
-	readyBy := minTime(c.origin.Add(c.config.Duration), time.Now().Add(c.config.HandshakeTimeout))
-	activeEnd := c.origin.Add(c.config.Duration)
-	for time.Now().Before(activeEnd) {
+	readyBy := clientDeadline(activeEnd, c.config.HandshakeTimeout)
+	for activeEnd.IsZero() || time.Now().Before(activeEnd) {
 		if err := runCtx.Err(); err != nil {
 			return c.result, err
 		}
@@ -237,16 +334,20 @@ func (c *Client) Run(ctx context.Context, observe func(ClientEvent) error) (resu
 		if err := c.serviceDiscovery(); err != nil {
 			return c.result, err
 		}
-		remaining := time.Until(activeEnd)
-		if remaining <= 0 {
-			break
+		wait := 50 * time.Millisecond // 同一循环同时处理网络和请求；限制空闲提交延迟，不并发读取UDP。
+		if !activeEnd.IsZero() {
+			wait = min(wait, time.Until(activeEnd))
+			if wait <= 0 {
+				break
+			}
 		}
-		wire, received, err := c.transport.poll(runCtx, min(200*time.Millisecond, remaining))
+		wire, received, err := c.transport.poll(runCtx, wait)
 		if err != nil {
 			status := c.transport.runtime.Status()
 			if status.RemoteDisconnect {
+				c.lifecycle.Store(clientStopped)
 				value := status.DisconnectData
-				if eventErr := c.observe(ClientEvent{Stage: "peer_disconnected", Role: c.result.Role, State: c.peer.Status().State, ElapsedMS: time.Since(c.origin).Milliseconds(), DisconnectData: &value}); eventErr != nil {
+				if eventErr := c.observeEvent(ClientEvent{Stage: "peer_disconnected", Role: c.result.Role, State: c.peer.Status().State, ElapsedMS: time.Since(c.origin).Milliseconds(), DisconnectData: &value}); eventErr != nil {
 					return c.result, errors.Join(err, eventErr)
 				}
 			}
@@ -264,9 +365,18 @@ func (c *Client) Run(ctx context.Context, observe func(ClientEvent) error) (resu
 			return c.result, nil
 		}
 		if c.peer.Status().State == PeerOnline && !c.result.ProtocolReady {
+			if err := c.learnDirectory(); err != nil {
+				return c.result, err
+			}
 			c.result.ProtocolReady = true
+			c.lifecycle.Store(clientOnline)
 			if err := c.emit("protocol_ready", 0); err != nil {
 				return c.result, err
+			}
+			if c.chat != nil {
+				if err := c.sendChat(runCtx); err != nil {
+					return c.result, err
+				}
 			}
 		}
 		if c.result.ProtocolReady {
@@ -281,6 +391,13 @@ func (c *Client) Run(ctx context.Context, observe func(ClientEvent) error) (resu
 				if err := c.sendFrame(runCtx, HeartbeatFrame()); err != nil {
 					return c.result, err
 				}
+			}
+			select {
+			case call := <-c.requests:
+				if err := c.handleChatCall(runCtx, call); err != nil {
+					return c.result, err
+				}
+			default:
 			}
 		}
 	}
@@ -331,8 +448,32 @@ func (c *Client) receive(ctx context.Context, wire []byte) error {
 		if err := c.peer.Observe(false, wire, time.Since(c.origin)); err != nil {
 			return err
 		}
+	case CommandMessageAck, CommandMessageReceipt:
+		return c.receiveChatAck(wire, frame)
+	case CommandGroupInfoPush, CommandGroupUserPush, CommandGroupUserResponse:
+		if c.config.GroupChat {
+			if frame.Command == CommandGroupUserResponse {
+				return c.receiveGroupUserResponse(wire, frame)
+			}
+			return c.receiveGroupPush(ctx, wire, frame)
+		}
+		c.result.UnhandledCommands[frame.Command]++
+		return c.emit("unsupported_business_command", frame.Command)
 	case CommandGroupInfoRequest:
-		// 上线实验没有本机群资料，不伪造成功响应；只记录命令号，不保存群标识或正文。
+		if c.config.GroupChat {
+			if err := c.peer.Observe(false, wire, time.Since(c.origin)); err != nil {
+				return err
+			}
+			groupID, err := DecodeGroupInfoRequest(frame)
+			if err != nil {
+				return err
+			}
+			// 本机没有群资料时不伪造3005；正常入站请求提供原始ID，再向同一对端请求成员。
+			if _, ok := c.groups[groupID]; ok {
+				return c.emit("group_info_request_received", frame.Command)
+			}
+			return c.requestGroupUsers(ctx, groupID)
+		}
 		c.result.UnhandledCommands[frame.Command]++
 		return c.emit("unsupported_business_command", frame.Command)
 	default:
@@ -343,6 +484,16 @@ func (c *Client) receive(ctx context.Context, wire []byte) error {
 		return err
 	}
 	if frame.Command == CommandHandshake {
+		profile, err := DecodeHandshake(frame)
+		if err != nil {
+			return err
+		}
+		for _, field := range profile.Info {
+			if field.Name == "NAME" && field.Value != "" {
+				c.contact = &Contact{UserID: c.remoteNode.UserID, Name: field.Value, Discovery: c.config.RemoteDiscovery}
+				break
+			}
+		}
 		if err := c.emitVersions("remote_message_versions", c.peer.messageVersions[0]); err != nil {
 			return err
 		}
@@ -367,7 +518,11 @@ func (c *Client) emit(stage string, command uint32) error {
 	if c.peer != nil {
 		state = c.peer.Status().State
 	}
-	return c.observe(ClientEvent{Stage: stage, Command: command, Role: c.result.Role, State: state, ElapsedMS: time.Since(c.origin).Milliseconds()})
+	event := ClientEvent{Stage: stage, Command: command, Role: c.result.Role, State: state, ElapsedMS: time.Since(c.origin).Milliseconds()}
+	if c.result.Chat != nil && command == c.result.Chat.Command {
+		event.MessageID = c.result.Chat.MessageID
+	}
+	return c.observeEvent(event)
 }
 
 func (c *Client) emitVersions(stage string, versions string) error {
@@ -375,7 +530,15 @@ func (c *Client) emitVersions(stage string, versions string) error {
 	if c.peer != nil {
 		state = c.peer.Status().State
 	}
-	return c.observe(ClientEvent{Stage: stage, Role: c.result.Role, State: state, ElapsedMS: time.Since(c.origin).Milliseconds(), MessageVersions: &versions})
+	return c.observeEvent(ClientEvent{Stage: stage, Role: c.result.Role, State: state, ElapsedMS: time.Since(c.origin).Milliseconds(), MessageVersions: &versions})
+}
+
+func clientDeadline(activeEnd time.Time, timeout time.Duration) time.Time {
+	deadline := time.Now().Add(timeout)
+	if activeEnd.IsZero() {
+		return deadline
+	}
+	return minTime(activeEnd, deadline)
 }
 
 func minTime(a, b time.Time) time.Time {

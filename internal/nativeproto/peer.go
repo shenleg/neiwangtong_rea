@@ -47,15 +47,16 @@ type PeerTimers struct {
 // Peer 跟踪调用者明确选定的一个对端；串行使用，重新建连须创建新实例。
 // Observe 的方向必须由调用者按端点提供，不能从 XML UserID 自动挑选目标。
 type Peer struct {
-	localID         string
-	remoteID        string
-	maxFrameBytes   uint32
-	status          PeerStatus
-	handshakes      [2]string
-	messageVersions [2]string
-	lastAt          time.Duration
-	lastInbound     time.Duration
-	lastOutbound    time.Duration
+	localID              string
+	remoteID             string
+	maxFrameBytes        uint32
+	status               PeerStatus
+	handshakes           [2]string
+	messageVersions      [2]string
+	groupMessageVersions [2]string
+	lastAt               time.Duration
+	lastInbound          time.Duration
+	lastOutbound         time.Duration
 }
 
 // NewPeer 使用显式本机/对端标识和应用帧读取预算创建空的离线会话。
@@ -77,7 +78,7 @@ func NewPeer(localUserID, remoteUserID string, maxFrameBytes uint32) (*Peer, err
 }
 
 // Observe 记录一条完整、已由 ENet 解包/重组的消息；outbound=true 表示本机发出，at 为会话起点后的单调时间。
-// 依实际观察限制初始顺序：type 4、双向 1000、双向 1018，然后心跳/群请求/原文 3005/QUIT。
+// 依已验证控制时序限制初始顺序：type 4、双向1000、双向1018，再接受单聊/群聊/回执、心跳、群资料及QUIT。
 // 截断、尾随字节、身份冲突、时间倒退或未支持的消息/顺序返回错误且不推进状态。
 // 本方法只记录发送事实，不实际发送，也不把 ACK 或状态 online 转成 recipient_observed。
 func (p *Peer) Observe(outbound bool, data []byte, at time.Duration) error {
@@ -166,9 +167,11 @@ func (p *Peer) observeFrame(outbound bool, frame Frame) error {
 			return fmt.Errorf("同一会话的初始握手变化，须显式重建会话")
 		}
 		for _, field := range profile.Features {
-			if field.Name == "MSG" {
+			switch field.Name {
+			case "MSG":
 				p.messageVersions[index] = field.Value
-				break
+			case "QGROUP_MSG":
+				p.groupMessageVersions[index] = field.Value
 			}
 		}
 		p.handshakes[index] = frame.Payload
@@ -190,13 +193,37 @@ func (p *Peer) observeFrame(outbound bool, frame Frame) error {
 		} else {
 			p.status.RemoteReady = true
 		}
-	case CommandHeartbeat, CommandQuit, CommandGroupInfoRequest, CommandGroupInfoResponse:
+	case CommandUserMessage, CommandGroupMessage, CommandMessageAck, CommandMessageReceipt, CommandHeartbeat, CommandQuit, CommandGroupInfoPush, CommandGroupUserPush, CommandGroupInfoRequest, CommandGroupInfoResponse, CommandGroupUserRequest, CommandGroupUserResponse:
 		if p.status.State != PeerOnline && p.status.State != PeerClosing {
 			return fmt.Errorf("命令 %d 前双向 READY 尚未齐全", frame.Command)
 		}
 		switch frame.Command {
+		case CommandUserMessage:
+			if _, err := DecodeUserMessage(frame); err != nil {
+				return err
+			}
+		case CommandGroupMessage:
+			if _, err := DecodeGroupMessage(frame); err != nil {
+				return err
+			}
+		case CommandMessageAck, CommandMessageReceipt:
+			if _, err := DecodeMessageAck(frame); err != nil {
+				return err
+			}
 		case CommandHeartbeat, CommandQuit:
 			if err := DecodeControl(frame); err != nil {
+				return err
+			}
+		case CommandGroupInfoPush, CommandGroupUserPush:
+			if _, err := DecodeGroupPush(frame); err != nil {
+				return err
+			}
+		case CommandGroupUserResponse:
+			if _, err := DecodeGroupUserResponse(frame); err != nil {
+				return err
+			}
+		case CommandGroupUserRequest:
+			if _, err := DecodeGroupUserRequest(frame); err != nil {
 				return err
 			}
 		case CommandGroupInfoRequest:

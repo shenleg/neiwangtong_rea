@@ -1,0 +1,81 @@
+<!doctype html>
+<!-- 本文件提供独立原生客户端的中文聊天页面结构；样式与交互仅使用同目录本地资产。 -->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="referrer" content="same-origin">
+  <title>内网通 · 独立聊天</title>
+  <link rel="stylesheet" href="./app.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#message-text">跳到消息编辑器</a>
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">n<span>·</span></span>
+        <div><h1>内网通<span class="brand-divider">/</span><span class="brand-subtitle">独立聊天</span></h1><p>简单连接，认真沟通。</p></div>
+      </div>
+      <div class="header-status"><span id="discovery-label" class="single-peer">单对端连接</span><span id="phase-badge" class="phase-badge" data-phase="offline"><span class="status-dot" aria-hidden="true"></span><span id="phase-label">正在读取状态</span></span></div>
+    </header>
+
+    <div class="workspace">
+      <aside class="directory panel" aria-label="联系人与已加入群">
+        <div class="directory-heading"><h2>通讯录</h2><span class="eyebrow">DIRECTORY</span></div>
+        <div class="directory-tabs" role="tablist" aria-label="通讯录分类">
+          <button id="tab-users" type="button" role="tab" aria-selected="true" aria-controls="directory-panel" data-kind="user">联系人 <span id="contact-count">0</span></button>
+          <button id="tab-groups" type="button" role="tab" aria-selected="false" aria-controls="directory-panel" tabindex="-1" data-kind="group">已加入群 <span id="group-count">0</span></button>
+        </div>
+        <div class="search-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m16 16 4 4"></path></svg><label class="sr-only" for="directory-search">搜索名称或 ID</label><input id="directory-search" type="search" placeholder="搜索名称或 ID" autocomplete="off" spellcheck="false"></div>
+        <div id="directory-panel" class="directory-results" role="tabpanel" aria-labelledby="tab-users" tabindex="0"><ul id="target-list" class="target-list"></ul><p id="directory-empty" class="directory-empty">正在读取通讯录…</p></div>
+        <p id="directory-note" class="directory-note">离线联系人仍可浏览，暂不可发送。</p>
+      </aside>
+
+      <main class="conversation panel" aria-labelledby="target-name">
+        <header class="conversation-heading">
+          <span id="target-avatar" class="target-avatar large" aria-hidden="true">↗</span>
+          <div class="target-heading-text"><p id="target-kind" class="eyebrow">新的沟通，从这里开始</p><h2 id="target-name">选择一位联系人</h2><p id="target-id" class="mono target-id">或切换到已加入群</p></div>
+          <span id="target-availability" class="availability">未选择目标</span>
+        </header>
+        <p id="target-reason" class="target-reason">请从左侧选择目标，再核对名称与 ID。</p>
+        <section class="session-records" aria-labelledby="records-heading">
+          <div class="section-heading"><h3 id="records-heading">此次网页会话</h3><span>仅显示本页发送记录</span></div>
+          <div id="records-scroll" class="records-scroll" tabindex="0" aria-label="本页发送记录">
+            <div id="records-empty" class="records-empty"><span class="empty-symbol" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M10 11h28v21H22l-9 7v-7h-3z"></path><path d="M17 19h14M17 25h9"></path></svg></span><h3>留一条清楚的消息</h3><p>选好目标，写下想说的话。<br>此处不接收或显示对方聊天。</p></div>
+            <ol id="message-records" class="message-records"></ol>
+          </div>
+          <p class="records-footnote">传输确认不代表送达或已读；本页记录刷新后不保留。</p>
+        </section>
+        <form id="composer" class="composer">
+          <div class="composer-heading"><label for="message-text">消息正文</label><span id="byte-count" class="byte-count">0 / 4096 字节</span></div>
+          <textarea id="message-text" rows="4" placeholder="选择目标后，在这里写消息…" aria-describedby="compose-hint byte-count send-notice" disabled></textarea>
+          <p id="compose-hint" class="compose-hint">正文按 UTF-8 字节计数，换行原样保留。</p>
+          <p id="send-notice" class="send-notice" role="status" aria-live="polite" aria-atomic="true">请先选择目标。</p>
+          <div class="composer-footer"><span>Enter 换行 · 点击按钮发送</span><button id="send-button" class="button primary send-button" type="submit" disabled><span id="send-label">发送消息</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 14-7-5 14-2-7zM12 12l7-7"></path></svg></button></div>
+        </form>
+      </main>
+
+      <aside class="connection panel" aria-label="后台连接与阶段记录">
+        <details class="connection-details" open>
+          <summary><span>后台连接</span><span class="eyebrow">SESSION</span></summary>
+          <div class="connection-body">
+            <p id="connection-intro" class="connection-intro">独立身份，连接指定对端。配置来自后台启动命令。</p>
+            <dl class="connection-fields"><div><dt>本机名称</dt><dd id="session-name">—</dd></div><div><dt>本机 ID</dt><dd id="session-id" class="mono">—</dd></div><div><dt id="session-remote-label">指定对端</dt><dd id="session-remote" class="mono">—</dd></div><div><dt>启动时间</dt><dd id="session-started">—</dd></div><div><dt>当前阶段</dt><dd id="session-stage" class="mono">—</dd></div></dl>
+            <div class="node-name-field"><label for="node-name">上线名称</label><input id="node-name" type="text" placeholder="例如：办公消息网关" autocomplete="off" aria-describedby="node-name-hint" disabled><p id="node-name-hint">离线时可修改；只改显示名称，不更换本机身份。</p></div>
+            <div class="session-actions"><button id="start-button" class="button primary" type="button" disabled>上线</button><button id="stop-button" class="button secondary" type="button" disabled>下线</button></div>
+            <button id="refresh-button" class="refresh-button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 8a7 7 0 0 1 12-2l2 3M4 15l2 3a7 7 0 0 0 12-2"></path></svg><span>刷新状态</span><span id="last-refresh">每 2 秒更新</span></button>
+            <p id="session-notice" class="session-notice" role="status" aria-live="polite" aria-atomic="true">正在读取后台状态…</p>
+            <p id="backend-error" class="error-text" role="alert" hidden></p>
+          </div>
+        </details>
+        <section class="stages" aria-labelledby="stages-heading"><div class="section-heading"><h3 id="stages-heading">阶段记录</h3><span>后台事件</span></div><p id="events-empty" class="events-empty">尚无阶段记录</p><ol id="stage-list" class="stage-list" aria-label="后台阶段记录"></ol></section>
+        <div class="scope-note"><span class="scope-marker" aria-hidden="true"></span><p id="scope-description">当前仅支持单对端。群列表并非全部群；多成员群暂不可发送，具体原因以后台检查为准。暂不接收或显示对方聊天。关闭或隐藏页面不会使后台下线。</p></div>
+      </aside>
+    </div>
+    <footer class="app-footer"><span>内网通 · 独立 Web 客户端 · <a href="/docs">Swagger API 文档</a></span><span>仅主动发送，不自动重发</span></footer>
+  </div>
+  <noscript><p class="noscript">此页面需要启用 JavaScript 才能读取后台状态与发送消息。</p></noscript>
+</body>
+</html>
