@@ -8,6 +8,8 @@ services:
     image: nwtweb:local
     pull_policy: never
     network_mode: host
+    # 修改 -listen 中的端口即可更改网页端口；保留 /data 以继续使用挂载的身份与日志目录。
+    command: ["-data-dir", "/data", "-listen", "0.0.0.0:8788"]
     restart: "no"
     # 程序正常退出预算为 10s，额外留出信号处理和调度时间。
     stop_grace_period: 20s
