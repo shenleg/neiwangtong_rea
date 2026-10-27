@@ -118,7 +118,10 @@ func serveSyntheticNativeWithHandler(ctx context.Context, discovery, conn *net.U
 	if _, err := discovery.WriteToUDPAddrPort(reply, source); err != nil {
 		return err
 	}
-	transport, err := NewUDPTransport(conn, netip.AddrPortFrom(source.Addr(), remote.ENetPort), runtimeConfig(1, 2))
+	transportConfig := runtimeConfig(1, 2)
+	// 大量对端并发时，race插桩和调度开销可能超过单元测试使用的40毫秒重试预算。
+	transportConfig.RetransmitAfter, transportConfig.MaxAttempts = 100*time.Millisecond, 10
+	transport, err := NewUDPTransport(conn, netip.AddrPortFrom(source.Addr(), remote.ENetPort), transportConfig)
 	if err != nil {
 		return err
 	}

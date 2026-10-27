@@ -90,7 +90,7 @@ func openNative(config Config, runID string, log *journal) (session, error) {
 		Duration: config.SessionDuration, ShutdownTimeout: 5 * time.Second, DiscoveryTimeout: 10 * time.Second, HandshakeTimeout: 15 * time.Second,
 	}
 	client, err := nativeproto.NewHost(discovery, conn, nativeproto.HostConfig{Client: cfg, Prefix: config.Prefix.Masked(),
-		Broadcast: netip.AddrPortFrom(broadcast(config.Prefix), config.DiscoveryPort), MaxPeers: 32})
+		Broadcast: netip.AddrPortFrom(broadcast(config.Prefix), config.DiscoveryPort), MaxPeers: 256})
 	if err != nil {
 		return nil, errors.Join(err, discovery.Close(), conn.Close())
 	}

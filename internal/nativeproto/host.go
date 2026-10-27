@@ -1,4 +1,4 @@
-// 本文件在两个真实UDP socket上管理多个独立Client；集中读取与分派发现/ENet包，不扫描、不重连或重提消息。
+// 本文件在两个真实UDP socket上管理多个独立Client；集中读取与分派发现/ENet包，有限次广播，不扫描、不重连或重提消息。
 package nativeproto
 
 import (
@@ -16,7 +16,7 @@ import (
 )
 
 // HostConfig 指定同一独立身份的网络范围和容量；Broadcast为零时仅使用显式Seeds或被动发现。
-// Prefix限制来源；Broadcast非零时必须是该前缀的定向广播及本机发现端口，MaxPeers为1..64。
+// Prefix限制来源；Broadcast非零时必须是该前缀的定向广播及本机发现端口，MaxPeers为1..256。
 // Client.RemoteDiscovery由每个发现端点替换，Duration是整个Host的运行预算，不为每个peer重新计时。
 type HostConfig struct {
 	Client    ClientConfig
@@ -79,8 +79,8 @@ func NewHost(discovery, conn *net.UDPConn, cfg HostConfig) (*Host, error) {
 		return nil, err
 	}
 	local := netip.AddrFrom4([4]byte{wire[16], wire[17], wire[18], wire[19]})
-	if !cfg.Prefix.IsValid() || !cfg.Prefix.Addr().Is4() || cfg.Prefix != cfg.Prefix.Masked() || cfg.Prefix.Bits() > 30 || !cfg.Prefix.Contains(local) || cfg.MaxPeers < 1 || cfg.MaxPeers > 64 {
-		return nil, fmt.Errorf("Host需要包含公告IPv4的规范前缀和1..64个peer容量")
+	if !cfg.Prefix.IsValid() || !cfg.Prefix.Addr().Is4() || cfg.Prefix != cfg.Prefix.Masked() || cfg.Prefix.Bits() > 30 || !cfg.Prefix.Contains(local) || cfg.MaxPeers < 1 || cfg.MaxPeers > 256 {
+		return nil, fmt.Errorf("Host需要包含公告IPv4的规范前缀和1..256个peer容量")
 	}
 	d := discovery.LocalAddr().(*net.UDPAddr).AddrPort()
 	e := conn.LocalAddr().(*net.UDPAddr).AddrPort()
@@ -184,6 +184,33 @@ func (h *Host) Run(ctx context.Context, observe func(ClientEvent) error) (Client
 					break
 				}
 				result.DiscoverySends++
+			}
+			if runErr == nil && h.config.Broadcast.IsValid() {
+				// 上线时连续三次间隔一秒公告，减少单次UDP广播或响应丢失造成的遗漏。
+				ticker := time.NewTicker(time.Second)
+				broadcasting := true
+				for broadcasting && result.DiscoverySends < len(targets)+2 && runErr == nil {
+					select {
+					case <-peerCtx.Done():
+						broadcasting = false
+					case runErr = <-h.fatal:
+					case <-ticker.C:
+						out := newHostPacketConn(h.discovery, netip.AddrPortFrom(h.local, h.config.Client.Node.DiscoveryPort), h.config.Broadcast)
+						_ = out.SetWriteDeadline(time.Now().Add(h.config.Client.DiscoveryTimeout))
+						result.DiscoveryAttempts++
+						n, err := out.WriteToUDPAddrPort(wire, h.config.Broadcast)
+						_ = out.Close()
+						if err != nil || n != len(wire) {
+							if err == nil {
+								err = io.ErrShortWrite
+							}
+							runErr = fmt.Errorf("Host发现广播写出失败: %w", err)
+						} else {
+							result.DiscoverySends++
+						}
+					}
+				}
+				ticker.Stop()
 			}
 			if runErr == nil {
 				select {
@@ -407,7 +434,7 @@ func (h *Host) distributeDiscovery(ctx context.Context, data []byte, source neti
 }
 
 func (h *Host) peerEvent(peer *hostPeer, event ClientEvent) error {
-	event.PeerIndex = peer.index // 1..64为Host内部序号，不记录远端原始身份；0保留给Host事件。
+	event.PeerIndex = peer.index // 1..256为Host内部序号，不记录远端原始身份；0保留给Host事件。
 	h.callbackMu.Lock()
 	defer h.callbackMu.Unlock()
 	snapshot := peer.client.Snapshot()

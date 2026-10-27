@@ -34,7 +34,8 @@ type hostObservedText struct {
 func hostSyntheticFixture(t *testing.T, n int, configure func(*ClientConfig), initial func(int) []Frame, handler func(int, Frame) (*Frame, error)) hostSyntheticRun {
 	t.Helper()
 	discovery, conn := hostTestSocket(t, "127.0.0.1"), hostTestSocket(t, "127.0.0.1")
-	node := testClientNode(t, discovery, conn, "host-original-id", 9)
+	// 合成端固定作为被动方，Host会话顺序必须大于所有合成端。
+	node := testClientNode(t, discovery, conn, "host-original-id", 250)
 	cfg := hostTestConfig(t, node)
 	if configure != nil {
 		configure(&cfg)
@@ -126,6 +127,32 @@ func decodeHostText(index int, frame Frame) (hostObservedText, error) {
 	}
 	message.text = content.Data[0].Text.Value
 	return message, nil
+}
+
+// TestHostDiscoversSeventyThreeClients 验证一次上线能与超过原64连接上限的合成客户端全部建立连接。
+func TestHostDiscoversSeventyThreeClients(t *testing.T) {
+	const count = 73
+	run := hostSyntheticFixture(t, count, func(cfg *ClientConfig) {
+		cfg.Transport.RetransmitAfter, cfg.Transport.MaxAttempts = 100*time.Millisecond, 10
+		cfg.HandshakeTimeout = 5 * time.Second
+	}, nil, func(int, Frame) (*Frame, error) { return nil, nil })
+	deadline := time.After(8 * time.Second)
+	failures := make(map[string]int)
+	for {
+		snapshot := run.host.Snapshot()
+		if len(snapshot.OnlineUserIDs) == count && len(snapshot.Contacts) == count {
+			break
+		}
+		select {
+		case event := <-run.events:
+			if event.Error != "" {
+				failures[event.Stage+": "+event.Error]++
+			}
+		case <-deadline:
+			t.Fatalf("在线=%d 联系人=%d 错误=%v", len(snapshot.OnlineUserIDs), len(snapshot.Contacts), failures)
+		}
+	}
+	finishHostSynthetic(t, run)
 }
 
 // TestHostRoutesThreeDistinctBodies 验证三个独立原生接收端分别收到目标原始ID对应的完整正文，不只检查传输ACK。

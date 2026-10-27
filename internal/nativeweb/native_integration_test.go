@@ -4,6 +4,7 @@ package nativeweb
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/netip"
@@ -72,6 +73,94 @@ func TestNativeStopWhileWaitingForContacts(t *testing.T) {
 	if state.Error != "" {
 		t.Fatalf("主动取消仍显示为失败：%+v", state)
 	}
+}
+
+// TestNativeIntegrationManyOnlineClients 验证Web一次上线能同时显示57个合成在线客户端，不依赖历史联系人。
+func TestNativeIntegrationManyOnlineClients(t *testing.T) {
+	const count = 57
+	localD := nativeIntegrationSocket(t, "127.0.0.1")
+	localE := nativeIntegrationSocket(t, "127.0.0.1")
+	config := Config{Local: netip.MustParseAddr("127.0.0.1"), Prefix: netip.MustParsePrefix("127.0.0.0/8"),
+		Name: "合成Web节点", DataDir: t.TempDir(),
+		DiscoveryPort: localD.LocalAddr().(*net.UDPAddr).AddrPort().Port(), ENetPort: localE.LocalAddr().(*net.UDPAddr).AddrPort().Port()}
+	if err := localD.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := localE.Close(); err != nil {
+		t.Fatal(err)
+	}
+	manager, err := New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, count)
+	started := 0
+	defer func() {
+		closeCtx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+		defer stop()
+		if err := manager.Close(closeCtx); err != nil {
+			t.Errorf("关闭Web: %v", err)
+		}
+		cancel()
+		for i := 0; i < started; i++ {
+			select {
+			case <-done:
+			case <-closeCtx.Done():
+				t.Error("合成对端未退出")
+				return
+			}
+		}
+	}()
+	if err := manager.Start(config.Name); err != nil {
+		t.Fatal(err)
+	}
+	awaitNativeIntegrationStage(t, manager, "protocol_ready")
+	for i := 0; i < count; i++ {
+		address := fmt.Sprintf("127.0.0.%d", i+2)
+		d := nativeIntegrationSocket(t, address)
+		e := nativeIntegrationSocket(t, address)
+		dAddr := d.LocalAddr().(*net.UDPAddr).AddrPort()
+		node, err := nativeproto.NewNodePacket(nativeproto.NodeRegistration{UserID: fmt.Sprintf("synthetic-%d", i), SessionGUID: [16]byte{byte(i + 1)},
+			Address: dAddr.Addr(), Broadcast: netip.MustParseAddr("127.255.255.255"),
+			DiscoveryPort: dAddr.Port(), ENetPort: e.LocalAddr().(*net.UDPAddr).AddrPort().Port()}, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		profile, err := nativeproto.ProbeHandshake(node.UserID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		peer, err := nativeproto.NewClient(d, e, nativeproto.ClientConfig{Node: node, Profile: profile,
+			RemoteDiscovery: netip.AddrPortFrom(config.Local, config.DiscoveryPort), LearnContacts: true,
+			Transport: nativeproto.ENetConfig{LocalPeerID: 1, ConnectID: [4]byte{byte(i + 1)}, MTU: 1400, WindowBytes: 65536,
+				MaxMessageBytes: 1 << 20, MaxQueuedBytes: 2 << 20, MaxPendingCommands: 1024,
+				RetransmitAfter: 100 * time.Millisecond, MaxAttempts: 6, ReceiveTimeout: 10 * time.Second, PingInterval: time.Second},
+			ShutdownTimeout: 3 * time.Second, DiscoveryTimeout: 3 * time.Second, HandshakeTimeout: 5 * time.Second})
+		if err != nil {
+			t.Fatal(err)
+		}
+		started++
+		go func() {
+			_, err := peer.Run(ctx, func(nativeproto.ClientEvent) error { return nil })
+			done <- err
+		}()
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		state := manager.State()
+		online := 0
+		for _, contact := range state.Contacts {
+			if contact.Online {
+				online++
+			}
+		}
+		if online == count && len(state.Contacts) == count {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("未发现全部合成客户端: %+v", manager.State())
 }
 
 // TestNativeIntegrationFirstStartSendAndRestore 验证默认openNative首次生成身份、READY后学习联系人、真实1004传输及下线后只读恢复。

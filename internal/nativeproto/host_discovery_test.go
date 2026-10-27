@@ -1,4 +1,4 @@
-// 本文件仅使用合成配置与loopback UDP验证一次广播、发现边界、零peer运行预算及observer失败，不向物理网卡发送。
+// 本文件仅使用合成配置与loopback UDP验证有限次广播、发现边界、零peer运行预算及observer失败，不向物理网卡发送。
 package nativeproto
 
 import (
@@ -11,12 +11,12 @@ import (
 	"time"
 )
 
-// TestHostBroadcastOnceLoopback 验证定向广播只写一次，构造不发包且零peer仍发布Host就绪；广播地址严格限于127/8。
-func TestHostBroadcastOnceLoopback(t *testing.T) {
+// TestHostBroadcastDiscoveryLoopback 验证一次上线有限次广播，构造不发包且零peer仍发布Host就绪；广播地址严格限于127/8。
+func TestHostBroadcastDiscoveryLoopback(t *testing.T) {
 	discovery, conn := hostTestSocket(t, "127.0.0.1"), hostTestSocket(t, "127.0.0.1")
 	node := testClientNode(t, discovery, conn, "host-broadcast-id", 3)
 	cfg := hostTestConfig(t, node)
-	cfg.Duration = 100 * time.Millisecond
+	cfg.Duration = 2300 * time.Millisecond
 	target := netip.AddrPortFrom(netip.MustParseAddr("127.255.255.255"), node.DiscoveryPort)
 	tap, err := net.ListenUDP("udp4", net.UDPAddrFromAddrPort(target))
 	if err != nil {
@@ -42,21 +42,74 @@ func TestHostBroadcastOnceLoopback(t *testing.T) {
 		}
 		return nil
 	})
-	if err != nil || !result.ProtocolReady || !result.GracefulExit || result.DiscoveryAttempts != 1 || result.DiscoverySends != 1 || ready != 1 {
+	if err != nil || !result.ProtocolReady || !result.GracefulExit || result.DiscoveryAttempts != 3 || result.DiscoverySends != 3 || ready != 1 {
 		t.Fatalf("广播结果=%+v ready=%d err=%v", result, ready, err)
 	}
 	_ = tap.SetReadDeadline(time.Now().Add(time.Second))
-	n, source, err := tap.ReadFromUDPAddrPort(buffer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	packet, err := DecodeNodePacket(buffer[:n])
-	if err != nil || packet.UserID != node.UserID || packet.Type != 1 || source.Port() != node.DiscoveryPort {
-		t.Fatalf("公告错误: %+v %s %v", packet, source, err)
+	for i := 0; i < 3; i++ {
+		n, source, err := tap.ReadFromUDPAddrPort(buffer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		packet, err := DecodeNodePacket(buffer[:n])
+		if err != nil || packet.UserID != node.UserID || packet.Type != 1 || source.Port() != node.DiscoveryPort {
+			t.Fatalf("公告错误: %+v %s %v", packet, source, err)
+		}
 	}
 	_ = tap.SetReadDeadline(time.Now().Add(20 * time.Millisecond))
 	if _, _, err := tap.ReadFromUDPAddrPort(buffer); !isTimeout(err) {
 		t.Fatalf("广播重复发送: %v", err)
+	}
+}
+
+// TestHostDiscoversAfterFirstBroadcastLost 模拟对端错过首个广播，验证同次上线第二次广播后仍能完成双向READY。
+func TestHostDiscoversAfterFirstBroadcastLost(t *testing.T) {
+	discovery, conn := hostTestSocket(t, "127.0.0.1"), hostTestSocket(t, "127.0.0.1")
+	peerDiscovery, peerConn := hostTestSocket(t, "127.0.0.2"), hostTestSocket(t, "127.0.0.2")
+	node := testClientNode(t, discovery, conn, "host-broadcast-retry", 9)
+	peerNode := testClientNode(t, peerDiscovery, peerConn, "peer-broadcast-retry", 1)
+	target := netip.AddrPortFrom(netip.MustParseAddr("127.255.255.255"), node.DiscoveryPort)
+	tap, err := net.ListenUDP("udp4", net.UDPAddrFromAddrPort(target))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tap.Close()
+	host, err := NewHost(discovery, conn, HostConfig{Client: hostTestConfig(t, node), Prefix: netip.MustParsePrefix("127.0.0.0/8"), Broadcast: target, MaxPeers: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	hostDone := make(chan residentRunResult, 1)
+	go func() {
+		result, err := host.Run(ctx, func(ClientEvent) error { return nil })
+		hostDone <- residentRunResult{result, err}
+	}()
+	_ = tap.SetReadDeadline(time.Now().Add(3 * time.Second))
+	buffer := make([]byte, 512)
+	for i := 0; i < 2; i++ {
+		if _, _, err := tap.ReadFromUDPAddrPort(buffer); err != nil {
+			t.Fatal(err)
+		}
+	}
+	peerCtx, cancelPeer := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancelPeer()
+	peerDone := make(chan error, 1)
+	go func() { peerDone <- serveSyntheticNative(peerCtx, peerDiscovery, peerConn, peerNode, true) }()
+	wire, err := peerNode.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := peerDiscovery.WriteToUDPAddrPort(wire, discovery.LocalAddr().(*net.UDPAddr).AddrPort()); err != nil {
+		t.Fatal(err)
+	}
+	awaitHostSnapshot(t, host, func(snapshot ClientSnapshot) bool { return len(snapshot.OnlineUserIDs) == 1 })
+	cancel()
+	if result := <-hostDone; result.err != nil || !result.result.GracefulExit {
+		t.Fatalf("Host退出失败: %+v", result)
+	}
+	if err := <-peerDone; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("合成对端退出失败: %v", err)
 	}
 }
 
@@ -71,7 +124,7 @@ func TestHostConfigurationDoesNotOwnSocketsOnFailure(t *testing.T) {
 	}
 	base := HostConfig{Client: hostTestConfig(t, node), Prefix: netip.MustParsePrefix("127.0.0.0/8"), MaxPeers: 3}
 	for _, change := range []func(*HostConfig){
-		func(cfg *HostConfig) { cfg.MaxPeers = 65 },
+		func(cfg *HostConfig) { cfg.MaxPeers = 257 },
 		func(cfg *HostConfig) { cfg.MaxPeers = 0 },
 		func(cfg *HostConfig) { cfg.Broadcast = netip.MustParseAddrPort("255.255.255.255:9011") },
 		func(cfg *HostConfig) { cfg.Broadcast = netip.MustParseAddrPort("127.255.255.255:1") },
