@@ -119,6 +119,24 @@ func TestAuthLifecycle(t *testing.T) {
 	}
 }
 
+// TestAuthPasswordRuleHint 验证认证页面展示密码字节长度规则并将提示关联到输入框。
+func TestAuthPasswordRuleHint(t *testing.T) {
+	manager, _ := testManager(t)
+	h, err := NewHandler(manager, netip.MustParseAddrPort("127.0.0.1:8788"), &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := authRequest(h, "GET", "/", "", "", nil, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("认证页面返回 %d", w.Code)
+	}
+	for _, text := range []string{`aria-describedby="auth-password-hint"`, `id="auth-password-hint"`, "8～1024 个 UTF-8 字节", "不要求大小写、数字或特殊符号"} {
+		if !strings.Contains(w.Body.String(), text) {
+			t.Errorf("认证页面缺少密码规则提示 %q", text)
+		}
+	}
+}
+
 // TestAuthProtection 验证静态认证资源公开，而敏感路由和跨站写入被拒绝。
 func TestAuthProtection(t *testing.T) {
 	manager, _ := testManager(t)

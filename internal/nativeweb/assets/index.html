@@ -18,7 +18,7 @@
       <p id="auth-description">请稍候。</p>
       <form id="auth-form" autocomplete="off" hidden>
         <div id="auth-code-field"><label for="auth-code">初始化代码</label><input id="auth-code" type="text" autocomplete="off" spellcheck="false"></div>
-        <div><label for="auth-password">密码</label><input id="auth-password" type="password" autocomplete="off" required></div>
+        <div><label for="auth-password">密码</label><input id="auth-password" type="password" autocomplete="off" aria-describedby="auth-password-hint" required><p id="auth-password-hint" class="auth-password-hint">密码长度为 8～1024 个 UTF-8 字节（英文通常占 1 字节，汉字通常占 3 字节）；不要求大小写、数字或特殊符号。</p></div>
         <button id="auth-submit" class="button primary" type="submit">登录</button>
       </form>
       <button id="auth-retry" class="button secondary" type="button" hidden>重新读取状态</button>

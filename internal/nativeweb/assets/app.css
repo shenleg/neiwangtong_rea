@@ -60,6 +60,7 @@ h1 { font-size: 19px; letter-spacing: .06em; font-weight: 650; }
 .auth-card form { display: grid; gap: 15px; margin-top: 20px; }
 .auth-card label { display: block; margin-bottom: 5px; }
 .auth-card input { width: 100%; padding: 9px 10px; border: 1px solid #dfe5eb; border-radius: 7px; }
+.auth-password-hint { margin-top: 6px; color: var(--muted); font-size: 12px; }
 .auth-card #auth-retry { margin-top: 15px; }
 .auth-notice { margin-top: 9px; color: var(--danger) !important; overflow-wrap: anywhere; }
 .auth-settings { border-top: 1px solid var(--line); padding-top: 17px; margin-top: 18px; }
