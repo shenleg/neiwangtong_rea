@@ -27,7 +27,7 @@ func main() {
 	os.Exit(code)
 }
 
-// run 只读识别/校验网络后启动无鉴权HTTP；返回0为正常退出/只读校验，1为运行失败，2为配置或识别错误。
+// run 只读识别/校验网络后启动认证HTTP；返回0为正常退出/只读校验，1为运行失败，2为配置或识别错误。
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	return runWithNetwork(ctx, args, stdout, stderr, detectLocalNetwork)
 }
@@ -85,7 +85,7 @@ func runWithNetwork(ctx context.Context, args []string, stdout, stderr io.Writer
 		return 1
 	}
 	address := listener.Addr().(*net.TCPAddr).AddrPort()
-	handler, err := nativeweb.NewHandler(manager, address)
+	handler, err := nativeweb.NewHandler(manager, address, stdout)
 	if err != nil {
 		fmt.Fprintln(stderr, errors.Join(err, listener.Close()))
 		return 1
@@ -102,7 +102,7 @@ func runWithNetwork(ctx context.Context, args []string, stdout, stderr io.Writer
 		if address.Addr().IsUnspecified() {
 			access = netip.AddrPortFrom(local, address.Port())
 		}
-		_, err = fmt.Fprintf(stdout, "HTTP监听：%s\n本机IPv4：%s\n发现子网：%s\n网页：http://%s\nSwagger：http://%s/docs\nOpenAPI：http://%s/openapi.json\n初版无鉴权；默认不会重连或补发，关闭网页不影响后台在线。\n", address, local, prefix, access, access, access)
+		_, err = fmt.Fprintf(stdout, "HTTP监听：%s\n本机IPv4：%s\n发现子网：%s\n网页：http://%s\nSwagger：http://%s/docs\nOpenAPI：http://%s/openapi.json\nHTTP不加密；默认不会重连或补发，关闭网页不影响后台在线。\n", address, local, prefix, access, access, access)
 	}
 	if err == nil {
 		select {

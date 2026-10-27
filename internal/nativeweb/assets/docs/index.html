@@ -17,7 +17,7 @@
     <h1>原生消息网关 API 文档</h1>
     <p class="send-warning"><strong>发送接口会发送真实消息。</strong>页面加载不会执行 POST；只有明确点击 Try it out 并点击 Execute 才提交。请先核实目标、完整正文和次数。</p>
     <p>每次公开 <code>/send/*</code> 调用都是新请求，不自动重试，也不保证跨 HTTP 请求幂等。发生错误或重定向后不要直接补发；<code>delivery</code> 始终为 <code>unknown</code>，协议确认不等于独立接收。</p>
-    <p>初版无鉴权，不使用 token、登录或 Authorization。所有文档资源同源离线可用；示例均为合成数据，不代表可用的真实目标。</p>
+    <p>在聊天页面登录后生成 API Key，再通过下方 Authorize 输入 Key；请求使用 Bearer 认证。Key 不会由文档页面持久保存。所有文档资源同源离线可用；示例均为合成数据，不代表可用的真实目标。</p>
   </header>
   <main id="swagger-ui" aria-label="Swagger UI 接口文档"></main>
   <noscript>此文档需要 JavaScript；也可下载上方 OpenAPI JSON 离线阅读。</noscript>

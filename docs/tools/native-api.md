@@ -2,7 +2,9 @@
 
 本文说明 `cmd/nwtweb` 的公开调用接口。接口参考开发时更新后的远端 `main`：`c4a88cc` 的 `internal/api/api.go`，保留 `/health`、`/contacts`、`/groups`、`/send/user`、`/send/group` 和精确名称解析方式，底层使用已有原生协议后台，不调用 Windows IPC。
 
-**初版无任何鉴权**：网页、API、Swagger 均不需要用户名、密码、token 或 `Authorization`，也不需要 `X-NWT-Request`。JSON 写入请求只需 `Content-Type: application/json`。仍保留 Host/Origin 检查、明确监听地址和输入校验；它们不是登录或凭据校验。
+**网页使用管理员密码登录，程序调用使用 API Key**。密码长度为8至1024个UTF-8字节，登录会话有效期为24小时，服务重启后需要重新登录。首次启动后，从服务端启动输出取得一次性初始化码，在网页设置管理员密码；Compose部署可通过 `docker compose logs` 查看启动输出，日志包含初始化码，应限制读取权限。登录后在网页生成API Key，完整密钥只在生成时展示一次；程序请求携带 `Authorization: Bearer <API Key>`，密钥可在网页撤销或重新生成。JSON 写入请求仍须使用 `Content-Type: application/json`。认证资料保存在数据目录；保留已有资料目录以维持身份及认证配置。HTTP不加密，密码、会话及密钥可能被同网段监听者截获。
+
+忘记密码或需要更改密码时，可在停止服务后通过备份并移出认证文件重新初始化；这会使旧 API Key 失效，具体步骤见[重置管理员密码](nwtweb.md#重置管理员密码)。
 
 ## 1. 启动与文档
 
@@ -16,7 +18,7 @@
 
 官方 Swagger UI 5.34.0 的脚本、样式和许可证随 Go 二进制内嵌；无外部 CDN、Petstore、字体或在线校验请求，详细来源及哈希见 `internal/nativeweb/assets/swagger/SOURCE.txt`。访问文档只加载规范，不自动上线、不自动提交消息。`Try it out` 后明确点击 `Execute` 才调用接口。
 
-Go程序和Compose默认监听 `0.0.0.0:8788`，本机或局域网通过 `http://实际宿主IP:8788` 访问，不能将 `0.0.0.0` 当作访问地址。可用 `-listen 私有IPv4:端口` 限定网卡，或 `-listen 127.0.0.1:8788` 仅供本机访问。启动时自动识别本机网络：Linux优先默认IPv4路由网卡的私有IPv4及真实掩码，没有合适默认网卡时仅接受唯一局域网IPv4；非Linux仅支持唯一私有IPv4自动识别。多IP有歧义时须用 `-local` 明确指定；裸IP读取对应网卡真实掩码，也可用CIDR或旧IP加 `-prefix` 显式覆盖。不猜 `/24`，识别过程不发探测包、不上线。当前无鉴权及TLS，Host/Origin检查仍保留；通配监听的Host按TCP连接实际到达的本机地址核对。Compose最短启动为 `docker compose up -d --build`，默认将 `./data` 挂到 `/data`；旧部署须继续挂原资料卷，不能改用空目录。完整参数与资料说明见[nwtweb部署说明](nwtweb.md#docker-compose-部署linux)。旧进程不会因源码修改自行更新。
+Go程序和Compose默认监听 `0.0.0.0:8788`，本机或局域网通过 `http://实际宿主IP:8788` 访问，不能将 `0.0.0.0` 当作访问地址。可用 `-listen 私有IPv4:端口` 限定网卡，或 `-listen 127.0.0.1:8788` 仅供本机访问。启动时自动识别本机网络：Linux优先默认IPv4路由网卡的私有IPv4及真实掩码，没有合适默认网卡时仅接受唯一局域网IPv4；非Linux仅支持唯一私有IPv4自动识别。多IP有歧义时须用 `-local` 明确指定；裸IP读取对应网卡真实掩码，也可用CIDR或旧IP加 `-prefix` 显式覆盖。不猜 `/24`，识别过程不发探测包、不上线。HTTP未加密，Host/Origin检查仍保留；通配监听的Host按TCP连接实际到达的本机地址核对。Compose最短启动为 `docker compose up -d --build`，默认将 `./data` 挂到 `/data`；旧部署须继续挂原资料卷，不能改用空目录。完整参数与资料说明见[nwtweb部署说明](nwtweb.md#docker-compose-部署linux)。旧进程不会因源码修改自行更新。
 
 ## 2. 与远端 main 的对应关系
 
@@ -77,6 +79,7 @@ Go程序和Compose默认监听 `0.0.0.0:8788`，本机或局域网通过 `http:/
 
 ```bash
 curl --get --data-urlencode 'name=合成联系人' \
+  -H "Authorization: Bearer $NWT_API_KEY" \
   http://127.0.0.1:8788/contacts
 ```
 
@@ -94,6 +97,7 @@ curl --get --data-urlencode 'name=合成联系人' \
 ```bash
 # 合成格式示例，不是执行真实发送的授权。
 curl http://127.0.0.1:8788/send/user \
+  -H "Authorization: Bearer $NWT_API_KEY" \
   -H 'Content-Type: application/json' \
   --data '{"user_id":"synthetic-peer","text":"第一行\n第二行"}'
 ```
@@ -190,7 +194,8 @@ curl http://127.0.0.1:8788/send/user \
 | 状态码 | 含义 |
 |---|---|
 | 400 | JSON、目标选择、字段或正文非法 |
-| 403 | Host或浏览器来源不符；不是鉴权失败 |
+| 401 | 未登录或API Key无效 |
+| 403 | Host或浏览器来源不符 |
 | 404 | 原始目标未知或名称未命中 |
 | 409 | 同名歧义；原网页接口还用于请求标识冲突等会话约束 |
 | 408 | 请求受理前取消 |
@@ -201,7 +206,7 @@ curl http://127.0.0.1:8788/send/user \
 
 ## 5. 原网页会话接口
 
-以下接口仍可调用，也全部不要求鉴权或自定义请求头：
+以下接口供登录后的网页使用：
 
 - `GET /api/state`：完整网页状态。
 - `GET /api/contacts`、`GET /api/groups`：原网页列表形状。
@@ -234,4 +239,4 @@ go test -count=1 -timeout 110s ./internal/nativeweb \
 
 浏览器默认启用sandbox；当前root环境必须另经明确批准后，才可为本次检查临时设置 `NWT_BROWSER_NO_SANDBOX=1`。
 
-已覆盖精确名称及歧义、两种目标发送、三联系人路由、无凭据与无自定义头访问、未知结果不补发、OpenAPI本地引用与官方资源校验，以及公开名称发送入口到真实Go协议模块的loopback集成。Swagger在真实Chrome中完成健康检查、单聊/群聊合成请求各一次、桌面/手机布局及返回聊天页面；无外部资源请求，没有自动POST。
+此前版本覆盖了精确名称及歧义、两种目标发送、三联系人路由、当时无凭据与无自定义头访问、未知结果不补发、OpenAPI本地引用与官方资源校验，以及公开名称发送入口到真实Go协议模块的loopback集成。Swagger在真实Chrome中完成健康检查、单聊/群聊合成请求各一次、桌面/手机布局及返回聊天页面；无外部资源请求，没有自动POST。

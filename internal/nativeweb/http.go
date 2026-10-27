@@ -1,4 +1,4 @@
-// 本文件提供无鉴权HTTP、内嵌聊天页及Swagger文档；保留Host/Origin校验与JSON输入限制，默认回环访问。
+// 本文件提供经认证的HTTP、内嵌聊天页及Swagger文档，并校验Host、Origin和JSON输入。
 package nativeweb
 
 import (
@@ -22,11 +22,15 @@ import (
 //go:embed assets/index.html assets/app.css assets/app.js assets/docs/* assets/swagger/*
 var assets embed.FS
 
-// NewHandler 为manager创建无鉴权网页、公开API与Swagger文档；address须为实际监听的回环、私有或0.0.0.0 IPv4端点。
-// 无网络或文件写入；监听地址、端口或内嵌文档无效时返回错误。Host/Origin限制跨站调用，不要求用户名、密码或token。
-func NewHandler(manager *Manager, address netip.AddrPort) (http.Handler, error) {
+// NewHandler 创建受认证保护的网页及API；address为实际监听端点，output接收首次初始化码。
+// 凭据、输出或监听地址无效时返回错误，不进行网络连接。
+func NewHandler(manager *Manager, address netip.AddrPort, output io.Writer) (http.Handler, error) {
 	if !address.IsValid() || !address.Addr().Is4() || address.Port() == 0 || !(address.Addr().IsLoopback() || address.Addr().IsPrivate() || address.Addr().IsUnspecified()) {
 		return nil, fmt.Errorf("网页须绑定回环、私有或0.0.0.0 IPv4地址及非零端口")
+	}
+	auth, err := newAuth(manager.config.DataDir, output)
+	if err != nil {
+		return nil, err
 	}
 	mux := http.NewServeMux()
 	registerPublicAPI(mux, manager)
@@ -138,11 +142,32 @@ func NewHandler(manager *Manager, address netip.AddrPort) (http.Handler, error) 
 			writeError(w, http.StatusForbidden, fmt.Errorf("仅允许同源请求"))
 			return
 		}
-		if r.Method == http.MethodPost {
+		if r.Method == http.MethodPost || r.Method == http.MethodDelete {
 			if mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mediaType != "application/json" {
 				writeError(w, http.StatusUnsupportedMediaType, fmt.Errorf("请求必须使用application/json"))
 				return
 			}
+		}
+		if strings.HasPrefix(r.URL.Path, "/auth/") {
+			auth.serve(w, r)
+			return
+		}
+		auth.mu.Lock()
+		err := auth.checkDisk()
+		allowed, cookie := auth.authenticate(r)
+		auth.mu.Unlock()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		publicAsset := r.Method == http.MethodGet && (r.URL.Path == "/" || r.URL.Path == "/app.js" || r.URL.Path == "/app.css")
+		if !publicAsset && !allowed {
+			writeError(w, http.StatusUnauthorized, fmt.Errorf("需要认证"))
+			return
+		}
+		if allowed && cookie && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Header.Get("Origin") != "http://"+r.Host {
+			writeError(w, http.StatusForbidden, fmt.Errorf("必须提供同源Origin"))
+			return
 		}
 		mux.ServeHTTP(w, r)
 	}), nil

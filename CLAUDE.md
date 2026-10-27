@@ -26,7 +26,7 @@
 4. **核对成功结果**：读 `docs/research/reports/ipc-phase12/0001-original-method-confirmation.md`。历史阶段的“未调用”“尚不可实现”仅描述当时状态，不覆盖后续成功证据。
 5. **为IPC提取联系人ID或准备单聊**：使用 `docs/tools/contactid.md` 的只读工具，联系人来源仅为 `cache/db/nr` 的 `OrgStruct_*`，原样保留ID，结果人工核实后才配置发送。字段依据见 `docs/research/reports/user-id/user-id-report.md`，已验证codec见 `docs/research/reports/nr-codec/nr-codec-report.md`；已通过合成加密测试及授权真实副本只读验证，联系人原始名称为not_found；操作者另确认输入为本机名称后已从唯一身份表后缀取得本机ID，未改配置或发送，见联系人报告同目录 `readonly-validation.md`。不使用群成员表替代，不猜ID或解密参数。
 6. **维护原生网络上线或继续实现发送**：限时实验读 `docs/tools/nwtnode.md`；常驻/连续单聊读 `docs/tools/nwtclient.md`；群同步/3011读 `docs/tools/native-group-chat.md`及静态报告`docs/research/reports/native-protocol/group-chat-contract.md`，真实群聊结果见`docs/research/reports/native-protocol/native-group-confirmation-20261025.md`；真实上线依据读 `docs/research/reports/native-protocol/native-node-online-confirmation-20261025.md`；节点字段修改读同目录 `node-registration-contract.md`；单聊正文/编号/回执修改读同目录 `chat-contract.md`，联系人使用独立身份自己的列表；传输修改读 `docs/tools/native-transport.md`。复用已验收的新身份/type4/1000/1018，不从“尚未上线”重新开始。
-7. **维护Web、局域网发现或多对端联系人**：先读 `docs/tools/nwtweb.md`；公开HTTP接口、精确名称和Swagger读 `docs/tools/native-api.md`（路由参考远端main，原生响应不伪造IPC，初版无鉴权、不生成密码）。核对三客户端及零公告IP修复依据读 `docs/research/reports/native-protocol/native-web-three-contacts-20261025.md`。Web统一使用子网Host，历史实验CLI与底层单peer会话保留，不作为Web可选模式；真实广播须另获明确子网、次数及时长授权，聊天另授权。
+7. **维护Web、局域网发现或多对端联系人**：先读 `docs/tools/nwtweb.md`；公开HTTP接口、精确名称和Swagger读 `docs/tools/native-api.md`（路由参考远端main，原生响应不伪造IPC；网页使用密码登录，API使用密钥）。核对三客户端及零公告IP修复依据读 `docs/research/reports/native-protocol/native-web-three-contacts-20261025.md`。Web统一使用子网Host，历史实验CLI与底层单peer会话保留，不作为Web可选模式；真实广播须另获明确子网、次数及时长授权，聊天另授权。
 8. 只有追查具体证据时才读对应小文件，不一次加载全部大型证据包或快照。
 
 ## 已验证路线

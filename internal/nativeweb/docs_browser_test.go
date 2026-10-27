@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// TestSwaggerBrowserInteraction 验证真实Swagger的无鉴权与Try it out，只有NWT_SWAGGER_BROWSER=1时执行，缺驱动或交互失败即报错。
+// TestSwaggerBrowserInteraction 验证已认证会话中的真实Swagger及Try it out，仅显式启用时执行。
 func TestSwaggerBrowserInteraction(t *testing.T) {
 	if os.Getenv("NWT_SWAGGER_BROWSER") != "1" {
 		t.Skip("未显式启用Chrome验收；普通测试不要求浏览器或Node")
@@ -27,10 +27,7 @@ func TestSwaggerBrowserInteraction(t *testing.T) {
 		return fake, nil
 	}
 	server := httptest.NewUnstartedServer(http.NotFoundHandler())
-	handler, err := NewHandler(manager, netip.MustParseAddrPort(server.Listener.Addr().String()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	handler := newAuthenticatedHandler(t, manager, netip.MustParseAddrPort(server.Listener.Addr().String()))
 	server.Config.Handler = handler
 	server.Start()
 	defer server.Close()

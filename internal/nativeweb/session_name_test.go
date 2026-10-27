@@ -76,6 +76,7 @@ func TestSessionStartsWithCustomName(t *testing.T) {
 // TestInvalidSessionNamesFailBeforeIO 验证空白、控制字符和非法结构在创建记录或启动会话前拒绝，不静默改用旧名称。
 func TestInvalidSessionNamesFailBeforeIO(t *testing.T) {
 	manager, _ := testManager(t)
+	handler := testHandler(t, manager)
 	manager.config.DataDir = filepath.Join(t.TempDir(), "not-created")
 	original := manager.State().Name
 	var calls atomic.Int32
@@ -84,7 +85,6 @@ func TestInvalidSessionNamesFailBeforeIO(t *testing.T) {
 		t.Error("非法名称不应执行会话工厂")
 		return nil, errors.New("非法名称进入了会话工厂")
 	}
-	handler := testHandler(t, manager)
 	for _, body := range []string{
 		`{"name":""}`, `{"name":"  \t  "}`, `{"name":"第一行\n第二行"}`, `{"name":"name\u0000"}`,
 		`{"name":null}`, `{"name":123}`, `{"name":"甲","name":"乙"}`, `{"name":"甲","extra":"value"}`,

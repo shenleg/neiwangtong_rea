@@ -64,8 +64,12 @@ func TestWildcardListenerOptions(t *testing.T) {
 		if !check && (!strings.Contains(stdout.String(), "http://127.0.0.1:") || !strings.Contains(stdout.String(), "HTTP监听：0.0.0.0:")) {
 			t.Fatalf("通配监听应展示本机可访问地址与实际监听地址：%s", stdout.String())
 		}
-		if _, err := os.Stat(dir); !os.IsNotExist(err) {
-			t.Fatalf("仅启动离线网页创建了协议资料：%v", err)
+		if check {
+			if _, err := os.Stat(dir); !os.IsNotExist(err) {
+				t.Fatalf("只读校验创建了目录：%v", err)
+			}
+		} else if _, err := os.Stat(filepath.Join(dir, "identity")); !os.IsNotExist(err) {
+			t.Fatalf("离线网页创建了协议身份：%v", err)
 		}
 	}
 }
@@ -92,14 +96,11 @@ func TestDefaultRemainsOfflineAndShutsDown(t *testing.T) {
 	if code := run(ctx, syntheticArgs(dir), &stdout, &stderr); code != 0 {
 		t.Fatalf("code=%d stderr=%s", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "http://127.0.0.1:") || !strings.Contains(stdout.String(), "/openapi.json") || !strings.Contains(stdout.String(), "/docs") || !strings.Contains(stdout.String(), "无鉴权") {
-		t.Fatal("缺少网页、Swagger地址或无鉴权说明")
+	if !strings.Contains(stdout.String(), "http://127.0.0.1:") || !strings.Contains(stdout.String(), "/openapi.json") || !strings.Contains(stdout.String(), "/docs") || !strings.Contains(stdout.String(), "初始化码：") {
+		t.Fatal("缺少网页、Swagger地址或初始化码")
 	}
-	if strings.Contains(stdout.String(), "本次进程密码") || strings.Contains(stdout.String(), "访问用户名") {
-		t.Fatal("初版不应生成或展示鉴权凭据")
-	}
-	if _, err := os.Stat(dir); !os.IsNotExist(err) {
-		t.Fatalf("默认HTTP启动不应创建协议资料：%v", err)
+	if _, err := os.Stat(filepath.Join(dir, "identity")); !os.IsNotExist(err) {
+		t.Fatalf("默认HTTP启动不应创建协议身份：%v", err)
 	}
 }
 
@@ -172,9 +173,8 @@ func TestSimplifiedOptions(t *testing.T) {
 		if code := run(ctx, args, &stdout, &stderr); code != 0 {
 			t.Fatalf("%v: code=%d stderr=%s", extra, code, stderr.String())
 		}
-		entries, err := os.ReadDir(dir)
-		if err != nil || len(entries) != 0 {
-			t.Fatalf("简化参数创建了资料：entries=%v err=%v", entries, err)
+		if _, err := os.Stat(filepath.Join(dir, "local/nativeclient/web-node/identity")); !os.IsNotExist(err) {
+			t.Fatalf("简化参数创建了协议身份：%v", err)
 		}
 	}
 }
@@ -233,9 +233,8 @@ func TestAutomaticNetworkCommand(t *testing.T) {
 	}); code != 2 || !strings.Contains(stderr.String(), failure.Error()) {
 		t.Fatalf("自动识别失败未明确报错：code=%d stderr=%s", code, stderr.String())
 	}
-	entries, err := os.ReadDir(dir)
-	if err != nil || len(entries) != 0 {
-		t.Fatalf("未上线时创建了资料：%v %v", entries, err)
+	if _, err := os.Stat(filepath.Join(dir, "local/nativeclient/web-node/identity")); !os.IsNotExist(err) {
+		t.Fatalf("未上线时创建了协议身份：%v", err)
 	}
 }
 

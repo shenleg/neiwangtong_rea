@@ -3,13 +3,14 @@
   "info": {
     "title": "内网通独立原生消息网关",
     "version": "1.0.0",
-    "description": "本文件定义公开原生 HTTP 接口与原网页接口，供离线 Swagger UI 使用。初版无鉴权，不使用 token、登录或 Authorization。\n\n**发送接口会发送真实消息**：文档加载不提交 POST，只有操作者明确 Try it out 并 Execute 才执行。每次公开 /send/* 调用由服务端生成新 request_id，不自动重试，不保证跨 HTTP 重复请求幂等；错误、超时或重定向后不能直接补发。fetch 禁止自动跟随重定向，避免 307/308 自动重复 POST。所有发送结果是原生协议结果，不是 IPC 结果；delivery 始终为 unknown，submitted、传输确认、业务确认及回执均不能代替独立接收观察。\n\n正文限制为 1..4096 UTF-8 字节，而非 4096 字符。保留实际换行，不把字面反斜杠 n 转换为换行。此预算不是厂商上限，也不代表所有长度已经真实验收。名称逐字精确匹配，保留大小写和空格；不按在线状态或列表顺序挑选同名目标。联系人及群列表都不是全网络或全部群的穷尽列表。所有示例均为合成数据。"
+    "description": "本文件定义公开原生 HTTP 接口与原网页接口，供离线 Swagger UI 使用。请先在聊天页面生成 API Key，再通过 Swagger UI 的 Authorize 输入 Key，以 Bearer 认证调用接口。\n\n**发送接口会发送真实消息**：文档加载不提交 POST，只有操作者明确 Try it out 并 Execute 才执行。每次公开 /send/* 调用由服务端生成新 request_id，不自动重试，不保证跨 HTTP 重复请求幂等；错误、超时或重定向后不能直接补发。fetch 禁止自动跟随重定向，避免 307/308 自动重复 POST。所有发送结果是原生协议结果，不是 IPC 结果；delivery 始终为 unknown，submitted、传输确认、业务确认及回执均不能代替独立接收观察。\n\n正文限制为 1..4096 UTF-8 字节，而非 4096 字符。保留实际换行，不把字面反斜杠 n 转换为换行。此预算不是厂商上限，也不代表所有长度已经真实验收。名称逐字精确匹配，保留大小写和空格；不按在线状态或列表顺序挑选同名目标。联系人及群列表都不是全网络或全部群的穷尽列表。所有示例均为合成数据。"
   },
   "servers": [
     {
       "url": "/"
     }
   ],
+  "security": [{ "bearerAuth": [] }],
   "tags": [
     {
       "name": "公开接口",
@@ -728,6 +729,9 @@
     }
   },
   "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "description": "在聊天页面生成的 API Key。" }
+    },
     "parameters": {
       "ExactName": {
         "name": "name",
@@ -957,7 +961,7 @@
         }
       },
       "InvalidOrigin": {
-        "description": "Host或浏览器Origin不匹配，或Sec-Fetch-Site标为跨站；这不是鉴权，不需要任何凭据。",
+        "description": "Host或浏览器Origin不匹配，或Sec-Fetch-Site标为跨站；这些检查独立于认证。",
         "content": {
           "application/json": {
             "schema": {

@@ -1,4 +1,4 @@
-// 本文件验证内嵌Swagger/OpenAPI资源与实际HTTP路由一致，所有规范引用留在本地且不定义鉴权。
+// 本文件验证内嵌Swagger/OpenAPI资源与实际HTTP路由一致，所有规范引用留在本地。
 package nativeweb
 
 import (
@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// TestOpenAPIRoutesAndLocalReferences 验证规范覆盖所有接口，仅定义子网发现且本地引用有效，公开发送不要求调用方request_id或鉴权。
+// TestOpenAPIRoutesAndLocalReferences 验证规范覆盖接口、声明 API Key、仅定义子网发现且本地引用有效。
 func TestOpenAPIRoutesAndLocalReferences(t *testing.T) {
 	manager, _ := testManager(t)
 	handler := testHandler(t, manager)
@@ -23,12 +23,14 @@ func TestOpenAPIRoutesAndLocalReferences(t *testing.T) {
 	if document["openapi"] != "3.0.3" {
 		t.Fatal("不是OpenAPI 3规范")
 	}
-	if _, ok := document["security"]; ok {
-		t.Fatal("初版不应定义鉴权")
+	security := document["security"].([]any)
+	if len(security) != 1 || security[0].(map[string]any)["bearerAuth"] == nil {
+		t.Fatal("规范必须声明 Bearer 认证")
 	}
 	components := document["components"].(map[string]any)
-	if _, ok := components["securitySchemes"]; ok {
-		t.Fatal("初版不应定义鉴权方案")
+	scheme := components["securitySchemes"].(map[string]any)["bearerAuth"].(map[string]any)
+	if scheme["type"] != "http" || scheme["scheme"] != "bearer" {
+		t.Fatal("Bearer 认证方案错误")
 	}
 	paths := document["paths"].(map[string]any)
 	for _, path := range []string{"/health", "/contacts", "/groups", "/send/user", "/send/group", "/api/state", "/api/contacts", "/api/groups", "/api/session/start", "/api/session/stop", "/api/messages/user", "/api/messages/group"} {

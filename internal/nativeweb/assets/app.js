@@ -1,4 +1,4 @@
-// 本文件管理同源状态轮询、每目标草稿及单次发送记录；POST 只由用户明确操作触发，失败不自动重发。
+// 本文件管理同源认证、状态轮询、每目标草稿及单次发送记录；写请求只由用户明确操作触发，失败不自动重发。
 (() => {
   "use strict";
 
@@ -21,6 +21,10 @@
   let sessionRevision = 0;
   let sessionStateUncertain = false;
   let nameEdited = false;
+  let authenticated = false;
+  let initialized = false;
+  let authBusy = false;
+  let keyConfigured = false;
 
   const keyOf = (target) => `${target.kind}:${target.id}`;
   // message_id 只在所属后台会话内关联，避免下次上线后相同编号误改旧记录。
@@ -290,16 +294,112 @@
   }
 
   // 禁止跟随重定向，以免 307/308 在另一个地址再次提交同一 POST。
-  async function api(path, payload) {
+  async function api(path, payload, method = "POST") {
     const options = { credentials: "same-origin", cache: "no-store", redirect: "error", signal: AbortSignal.timeout(25000) };
     if (payload !== undefined) {
-      options.method = "POST";
+      options.method = method;
       options.headers = { "Content-Type": "application/json" };
       options.body = JSON.stringify(payload);
     }
     const response = await fetch(path, options);
-    const data = await response.json();
+    const data = response.status === 204 ? {} : await response.json();
     return { ok: response.ok, status: response.status, data };
+  }
+
+  function clearKey() {
+    $("key-value").textContent = "";
+    $("key-result").hidden = true;
+  }
+
+  function authControls(busy) {
+    authBusy = busy;
+    for (const id of ["auth-submit", "auth-retry", "auth-logout", "key-create", "key-revoke"]) $(id).disabled = busy;
+    $("key-revoke").disabled = busy || !keyConfigured;
+  }
+
+  function showAuth(status) {
+    initialized = status.initialized;
+    authenticated = status.authenticated;
+    $("auth-screen").hidden = authenticated;
+    $("app-shell").hidden = !authenticated;
+    $("auth-form").hidden = authenticated;
+    $("auth-retry").hidden = true;
+    $("auth-title").textContent = initialized ? "密码登录" : "首次初始化";
+    $("auth-description").textContent = initialized ? "输入密码以访问聊天页面。" : "输入初始化代码并设置登录密码。";
+    $("auth-code-field").hidden = initialized;
+    $("auth-code").required = !initialized;
+    $("auth-submit").textContent = initialized ? "登录" : "初始化";
+    keyConfigured = status.api_key_configured;
+    $("key-status").textContent = status.api_key_configured ? "API Key 已配置。" : "尚未配置 API Key。";
+    $("key-revoke").disabled = !status.api_key_configured;
+    if (!authenticated) clearKey();
+  }
+
+  async function refreshAuth() {
+    try {
+      const response = await api("/auth/status");
+      if (!response.ok) throw new Error();
+      showAuth(response.data);
+      $("auth-notice").textContent = "";
+      if (authenticated) void refreshState();
+    } catch {
+      authenticated = false;
+      clearKey();
+      $("app-shell").hidden = true;
+      $("auth-screen").hidden = false;
+      $("auth-form").hidden = true;
+      $("auth-title").textContent = "无法读取认证状态";
+      $("auth-description").textContent = "请检查服务后重新读取。";
+      $("auth-retry").hidden = false;
+    }
+  }
+
+  async function submitAuth(event) {
+    event.preventDefault();
+    if (authBusy) return;
+    const payload = initialized ? { password: $("auth-password").value } : { code: $("auth-code").value, password: $("auth-password").value };
+    // 请求提交后立即清空输入，错误信息不使用后台内容，避免回显密码或初始化代码。
+    $("auth-password").value = "";
+    $("auth-code").value = "";
+    authControls(true);
+    $("auth-notice").textContent = "";
+    try {
+      const response = await api(initialized ? "/auth/login" : "/auth/setup", payload);
+      if (!response.ok) throw new Error();
+      await refreshAuth();
+    } catch {
+      $("auth-notice").textContent = "操作未成功，请检查输入或服务状态后重试。";
+    } finally {
+      authControls(false);
+    }
+  }
+
+  async function changeAuth(action) {
+    if (authBusy || !authenticated) return;
+    authControls(true);
+    clearKey();
+    $("key-notice").textContent = "";
+    try {
+      const response = await api(action === "logout" ? "/auth/logout" : "/auth/api-key", {}, action === "revoke" ? "DELETE" : "POST");
+      if (!response.ok) throw new Error();
+      if (action === "create") {
+        keyConfigured = true;
+        $("key-value").textContent = response.data.api_key;
+        $("key-result").hidden = false;
+        $("key-status").textContent = "API Key 已配置。";
+      } else if (action === "revoke") {
+        keyConfigured = false;
+        $("key-status").textContent = "尚未配置 API Key。";
+        $("key-notice").textContent = "API Key 已撤销。";
+      } else {
+        await refreshAuth();
+      }
+    } catch {
+      $("key-notice").textContent = "操作结果未确认，请刷新页面检查状态；未自动重试。";
+      if (action === "logout") await refreshAuth();
+    } finally {
+      authControls(false);
+    }
   }
 
   function sessionNotice(text, warning = false) {
@@ -308,6 +408,7 @@
   }
 
   function refreshState() {
+    if (!authenticated) return Promise.resolve();
     if (refreshPending) return refreshPending;
     $("refresh-button").disabled = true;
     const revision = sessionRevision;
@@ -316,6 +417,13 @@
         const response = await api("/api/state");
         // 操作前发出的 GET 不得覆盖操作后的状态；操作期间的快照也不能解除发送限制。
         if (revision !== sessionRevision) return;
+        if (response.status === 401) {
+          authenticated = false;
+          $("app-shell").hidden = true;
+          clearKey();
+          void refreshAuth();
+          return;
+        }
         if (!response.ok) throw new Error(response.data.error || `HTTP ${response.status}`);
         const recovered = !reachable;
         state = response.data;
@@ -432,6 +540,12 @@
     renderDirectory();
   }
 
+  $("auth-form").addEventListener("submit", (event) => void submitAuth(event));
+  $("auth-retry").addEventListener("click", () => void refreshAuth());
+  $("auth-logout").addEventListener("click", () => void changeAuth("logout"));
+  $("key-create").addEventListener("click", () => void changeAuth("create"));
+  $("key-revoke").addEventListener("click", () => void changeAuth("revoke"));
+  $("key-dismiss").addEventListener("click", clearKey);
   $("directory-search").addEventListener("input", renderDirectory);
   for (const tab of document.querySelectorAll('[role="tab"]')) {
     tab.addEventListener("click", () => switchTab(tab.dataset.kind));
@@ -455,7 +569,7 @@
   $("stop-button").addEventListener("click", () => void changeSession("stop"));
   $("refresh-button").addEventListener("click", () => void refreshState());
   renderComposer();
-  void refreshState();
+  void refreshAuth();
   // 只有 GET 定时刷新。没有 visibilitychange、pagehide、beforeunload 或自动下线逻辑。
   window.setInterval(() => void refreshState(), 2000);
 })();

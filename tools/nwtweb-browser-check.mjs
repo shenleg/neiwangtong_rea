@@ -11,6 +11,7 @@ import { webcrypto } from "node:crypto";
 // 无浏览器或socket的合成DOM模式，便于在不能启动sandbox浏览器的环境运行结果回归。
 if (process.argv[2] === "--synthetic-only") {
   await checkSyntheticGroupResults();
+  await checkSwaggerAuth();
   process.exit(0);
 }
 
@@ -26,6 +27,8 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const scriptErrors = [];
   page.on("pageerror", (error) => scriptErrors.push(error.message));
+  // 当前后端尚未提供认证接口；浏览器聊天回归使用合成的已登录状态。
+  await page.route("**/auth/status", (route) => route.fulfill({ json: { initialized: true, authenticated: true, api_key_configured: false } }));
   await page.goto(base.href);
   await page.getByText("已离线", { exact: true }).waitFor();
   const liveState = await page.request.get(new URL("/api/state", base).href).then((response) => response.json());
@@ -227,6 +230,22 @@ try {
   await browser.close();
 }
 
+/** 验证文档声明 Bearer 认证且只向同源请求发送 Key；读取或断言失败时抛错。 */
+async function checkSwaggerAuth() {
+  const spec = JSON.parse(await readFile(new URL("../internal/nativeweb/assets/docs/openapi.json", import.meta.url), "utf8"));
+  assert.equal(spec.components.securitySchemes.bearerAuth.scheme, "bearer");
+  assert.deepEqual(spec.security, [{ bearerAuth: [] }]);
+  const source = await readFile(new URL("../internal/nativeweb/assets/docs/init.js", import.meta.url), "utf8");
+  let config;
+  const window = { location: { href: "http://example.test/docs", origin: "http://example.test" }, addEventListener: (_, callback) => callback() };
+  runInNewContext(source, { window, URL, SwaggerUIBundle: (value) => { config = value; } });
+  assert.equal(config.persistAuthorization, false);
+  const request = config.requestInterceptor({ url: "/contacts", headers: { Authorization: "Bearer test-key" } });
+  assert.equal(request.headers.Authorization, "Bearer test-key");
+  assert.equal(request.redirect, "error");
+  assert.throws(() => config.requestInterceptor({ url: "http://other.test/contacts", headers: { Authorization: "Bearer test-key" } }));
+}
+
 /** 生成逐成员结果；multi增加第二人，partial模拟实际路由失败，skipped模拟离线跳过；不执行I/O，无异常。 */
 function groupRecipients(multi, partial = false, skipped = false) {
   const recipients = [{ user_id: "synthetic-peer", peer_index: 1, skipped: false, submitted: true, transport_acknowledged: true, error: "" }];
@@ -269,21 +288,34 @@ async function checkSyntheticGroupResults() {
   };
   const posts = [];
   let response;
+  let authStatus = { initialized: false, authenticated: false, api_key_configured: false };
+  const authRequests = [];
   const context = { document, TextEncoder, AbortSignal, window: { crypto: webcrypto },
     fetch: async (url, options) => {
+      if (url.startsWith("/auth/")) {
+        assert.equal(options.redirect, "error");
+        if (url === "/auth/status") return { ok: true, status: 200, json: async () => structuredClone(authStatus) };
+        authRequests.push({ url, method: options.method, payload: JSON.parse(options.body) });
+        if (url === "/auth/setup" || url === "/auth/login") authStatus = { ...authStatus, initialized: true, authenticated: true };
+        if (url === "/auth/logout") authStatus.authenticated = false;
+        if (url === "/auth/api-key") authStatus.api_key_configured = options.method !== "DELETE";
+        return { ok: true, status: 200, json: async () => url === "/auth/api-key" && options.method === "POST" ? { api_key: "one-time-key" } : {} };
+      }
       assert.equal(options.method, "POST");
       assert.equal(options.redirect, "error");
       posts.push({ url, payload: JSON.parse(options.body) });
       return { ok: response.ok, status: response.status, json: async () => structuredClone(response.data) };
     } };
   const source = await readFile(new URL("../internal/nativeweb/assets/app.js", import.meta.url), "utf8");
-  const boundary = source.indexOf('  $("directory-search").addEventListener');
+  const boundary = source.indexOf('  $("auth-form").addEventListener');
   assert.ok(boundary > 0, "必须执行真实页面逻辑，不能误取空源码");
   runInNewContext(source.slice(0, boundary) + `
     refreshState = () => Promise.resolve();
     globalThis.fixture = {
       records,
+      refreshAuth, submitAuth, changeAuth, clearKey,
       prepare(mode = "ready") {
+        authenticated = true;
         state = { phase: "online", started_at: "synthetic", own_user_id: "synthetic-own", remote: "127.0.0.0/8", max_text_bytes: 4096,
           contacts: [{ user_id: "synthetic-peer", name: "合成联系人", online: mode !== "offline", sendable: mode !== "offline" },
             { user_id: mode === "ready" ? "third-peer" : "offline-peer", name: "合成群成员", online: mode === "ready", sendable: mode === "ready" }],
@@ -302,6 +334,32 @@ async function checkSyntheticGroupResults() {
     };
   })();`, context);
   const fixture = context.fixture;
+  await fixture.refreshAuth();
+  assert.equal(document.getElementById("auth-title").textContent, "首次初始化");
+  assert.equal(document.getElementById("app-shell").hidden, true);
+  document.getElementById("auth-code").value = "setup-code";
+  document.getElementById("auth-password").value = "setup-password";
+  await fixture.submitAuth({ preventDefault() {} });
+  assert.deepEqual(authRequests[0], { url: "/auth/setup", method: "POST", payload: { code: "setup-code", password: "setup-password" } });
+  assert.equal(document.getElementById("auth-password").value, "");
+  assert.equal(document.getElementById("auth-code").value, "");
+  assert.equal(document.getElementById("app-shell").hidden, false);
+  await fixture.changeAuth("create");
+  assert.equal(document.getElementById("key-value").textContent, "one-time-key");
+  assert.equal(document.getElementById("key-result").hidden, false);
+  fixture.clearKey();
+  assert.equal(document.getElementById("key-value").textContent, "");
+  await fixture.changeAuth("revoke");
+  assert.equal(authRequests[2].method, "DELETE");
+  assert.equal(document.getElementById("key-revoke").disabled, true);
+  await fixture.changeAuth("logout");
+  assert.equal(document.getElementById("auth-title").textContent, "密码登录");
+  assert.equal(document.getElementById("app-shell").hidden, true);
+  document.getElementById("auth-password").value = "login-password";
+  await fixture.submitAuth({ preventDefault() {} });
+  assert.deepEqual(authRequests[4], { url: "/auth/login", method: "POST", payload: { password: "login-password" } });
+  assert.equal(document.getElementById("auth-password").value, "");
+  assert.equal(document.getElementById("app-shell").hidden, false);
   const result = (partial) => ({ command: 3011, message_id: "7", submitted: true, transport_acknowledged: !partial,
     business_acknowledged: false, receipt_received: false, delivery: "unknown", recipients: groupRecipients(true, partial) });
   fixture.prepare();
@@ -372,5 +430,5 @@ async function checkSyntheticGroupResults() {
   assert.equal(fixture.records[0].result.transport_acknowledged, false);
   fixture.apply([{ command: 1004, stage: "transport_acknowledged", message_id: "7", peer_index: 1 }]);
   assert.equal(fixture.records[0].result.transport_acknowledged, true);
-  console.log(JSON.stringify({ checks: ["多成员群全部传输确认", "在线加离线群HTTP200清稿并显示skipped及原因，整群ACK仍false", "全部离线禁用且无POST", "HTTP502及实际路由失败保留逐成员结果与草稿", "单peer及同号单聊事件不修改群聚合结果", "1004传输/1005业务ACK/1006回执按阶段回填单聊", "事件刷新不重发POST"], messagePosts: posts.length, network: "无socket，仅合成DOM/fetch" }, null, 2));
+  console.log(JSON.stringify({ checks: ["首次初始化、登录、退出与一次性 Key 生成/撤销", "多成员群全部传输确认", "在线加离线群HTTP200清稿并显示skipped及原因，整群ACK仍false", "全部离线禁用且无POST", "HTTP502及实际路由失败保留逐成员结果与草稿", "单peer及同号单聊事件不修改群聚合结果", "1004传输/1005业务ACK/1006回执按阶段回填单聊", "事件刷新不重发POST"], messagePosts: posts.length, network: "无socket，仅合成DOM/fetch" }, null, 2));
 }

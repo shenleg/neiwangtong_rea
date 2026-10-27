@@ -11,8 +11,22 @@
   <script src="./app.js" defer></script>
 </head>
 <body>
-  <a class="skip-link" href="#message-text">跳到消息编辑器</a>
-  <div class="app-shell">
+  <section id="auth-screen" class="auth-screen" aria-labelledby="auth-title">
+    <div class="auth-card panel">
+      <p class="eyebrow">内网通 · 独立聊天</p>
+      <h1 id="auth-title">正在读取认证状态</h1>
+      <p id="auth-description">请稍候。</p>
+      <form id="auth-form" autocomplete="off" hidden>
+        <div id="auth-code-field"><label for="auth-code">初始化代码</label><input id="auth-code" type="text" autocomplete="off" spellcheck="false"></div>
+        <div><label for="auth-password">密码</label><input id="auth-password" type="password" autocomplete="off" required></div>
+        <button id="auth-submit" class="button primary" type="submit">登录</button>
+      </form>
+      <button id="auth-retry" class="button secondary" type="button" hidden>重新读取状态</button>
+      <p id="auth-notice" class="auth-notice" role="status" aria-live="polite"></p>
+    </div>
+  </section>
+  <div id="app-shell" class="app-shell" hidden>
+    <a class="skip-link" href="#message-text">跳到消息编辑器</a>
     <header class="app-header">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">n<span>·</span></span>
@@ -70,6 +84,14 @@
             <p id="backend-error" class="error-text" role="alert" hidden></p>
           </div>
         </details>
+        <section class="auth-settings" aria-labelledby="auth-settings-heading">
+          <h3 id="auth-settings-heading">账户与 API Key</h3>
+          <p id="key-status">正在读取 Key 状态…</p>
+          <div class="session-actions"><button id="key-create" class="button secondary" type="button">生成 Key</button><button id="key-revoke" class="button secondary" type="button">撤销 Key</button></div>
+          <div id="key-result" hidden><p>此 Key 仅显示一次，请立即保存。</p><code id="key-value" class="mono"></code><button id="key-dismiss" class="button secondary" type="button">关闭</button></div>
+          <p id="key-notice" class="auth-notice" role="status" aria-live="polite"></p>
+          <button id="auth-logout" class="button secondary" type="button">退出登录</button>
+        </section>
         <section class="stages" aria-labelledby="stages-heading"><div class="section-heading"><h3 id="stages-heading">阶段记录</h3><span>后台事件</span></div><p id="events-empty" class="events-empty">尚无阶段记录</p><ol id="stage-list" class="stage-list" aria-label="后台阶段记录"></ol></section>
         <div class="scope-note"><span class="scope-marker" aria-hidden="true"></span><p id="scope-description">支持多对端联系人、单聊和多成员群发送。群列表并非全部群；发送前须同步最新完整成员，向在线就绪成员投递，离线或未READY成员列为未投递；至少一名成员可用才启用发送。不离线存储、不自动补发。部分提交后请先确认，勿重复发送。暂不接收或显示对方聊天。关闭或隐藏页面不会使后台下线。</p></div>
       </aside>

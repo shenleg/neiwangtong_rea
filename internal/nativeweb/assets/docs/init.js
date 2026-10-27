@@ -1,4 +1,4 @@
-// 本文件初始化官方 Swagger UI；只加载同源规范，禁用外部校验、凭据及自动重定向。
+// 本文件初始化官方 Swagger UI；仅允许同源请求，不持久化认证信息或自动跟随重定向。
 "use strict";
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -22,12 +22,7 @@ window.addEventListener("DOMContentLoaded", () => {
       }
       // 307/308 会重复提交 POST，因此让 fetch 直接报错，而不是自动跟随。
       request.redirect = "error";
-      request.credentials = "omit";
-      for (const name of Object.keys(request.headers)) {
-        if (name.toLowerCase() === "authorization") {
-          delete request.headers[name];
-        }
-      }
+      request.credentials = "same-origin";
       return request;
     },
   });
