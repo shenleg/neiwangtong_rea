@@ -97,6 +97,6 @@ GOARCH=386 go test -count=1 -timeout 45s ./...
 GOARCH=386 go vet ./...
 ```
 
-Windows 386 IPC fixture 只访问独立测试子进程，不向内网通发送。amd64 构建通过不代表 amd64 实际发送已验证。
+2026-10-27，Linux amd64 与 386 全仓测试及 vet 在隔离容器中均通过，包含托盘程序编译；容器使用方式及宿主机依赖说明见[全仓隔离验证](docs/tools/nwtweb.md#2026-10-27全仓隔离验证)。Windows 386 IPC fixture 只访问独立测试子进程，不向内网通发送。amd64 构建通过不代表 amd64 实际发送已验证。
 
 **Adapter 内部用 `crypto/rand` 为每次有效发送调用生成 `NWT-GW-<随机十六进制>` 标识；每次调用是新任务，不自动重试，日志碰撞直接报错，不换 ID 再试。随机 ID 不提供调用方重试幂等性。** 用 `SendResult.AttemptID` 追加观察，重建 Adapter 后也可依据已有日志继续记录。日志目录不变，成功及 unknown 实验的全部历史记录保留，不重复执行旧任务。接口调整阶段仅使用合成 fixture；随后另经用户授权，已通过[新版群接口](docs/research/reports/ipc-phase12/explicit-target-group-confirmation.md)向 `qun` 发送一条固定正文，并通过[新版单聊接口](docs/research/reports/ipc-phase12/explicit-target-user-confirmation.md)向用户确认的原接收者发送一条固定正文，两次均获独立接收确认。自定义正文实现经离线测试后，另获授权完成[三行消息真实验证](docs/research/reports/ipc-phase12/custom-message-newlines-confirmation.md)：`qun` 群字面 `\n` 转 LF、`PVE-WIN11` 私聊字面 `\r\n` 转 CRLF，各调用一次，独立接收确认条数、发送者、三行正文和 emoji 正确，均记为 `recipient_observed`。随后另经授权完成[500汉字五段真实验证](docs/research/reports/ipc-phase12/custom-500-newlines-confirmation.md)：群聊LF和私聊CRLF各新增一条，全文、发送者和显式换行均正确，均为 `recipient_observed`。更长正文及其他显示边界仍未真实验证。开发期间操作真实客户端复验须另行明确授权，这不是现行发送接口每次调用的额外要求。API 完成与 `LRESULT=1` 不代表送达，只有独立接收观察才记为 `recipient_observed`。

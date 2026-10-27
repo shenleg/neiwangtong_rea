@@ -217,6 +217,26 @@ HTTP200表示至少一个可用成员且全部可用路由传输确认，不是�
 
 默认仅使用合成资料、内存 HTTP 和 loopback 网络，不加载真实身份、联系人或客户端资料。
 
+### 2026-10-27：全仓隔离验证
+
+在本机 Docker 隔离环境中，Linux amd64 和 386 的全仓 `go test -count=1 -timeout 45s ./...` 与 `go vet ./...` 均通过，包含 `cmd/nwttray` 的编译；该包没有测试函数。amd64 的上游托盘库编译出现废弃 API 警告，不影响通过。测试禁用容器外网、只读挂载源码，使用合成和 loopback 数据，没有连接真实客户端或发送消息。此前各次宿主机验证失败记录保留在下方，不代表本次隔离验证失败。
+
+本机保留了 `nwtweb-test-deps:local`（Debian 13 amd64）和 `nwtweb-test-deps:386`（Debian 12 i386）镜像，以及 `nwtweb-test-go-modcache` 模块缓存卷；镜像安装了 `pkgconf` 和 `libayatana-appindicator3-dev`，386 镜像原生启用 CGO。这些资源只存在于当前 Docker 环境，不属于仓库。宿主机没有安装这些托盘开发依赖，直接在宿主机运行全仓测试仍可能遇到原有依赖错误。
+
+在项目根目录可重复执行（源码只读、禁用外网；缓存卷须已包含当前 Go 依赖）：
+
+```bash
+for image in nwtweb-test-deps:local nwtweb-test-deps:386; do
+  docker run --network none \
+    --mount "type=bind,src=$PWD,dst=/src,readonly" \
+    --mount type=volume,src=nwtweb-test-go-modcache,dst=/go/pkg/mod \
+    -e GOPROXY=off -e ENET_REFERENCE_BINARY= \
+    "$image" sh -c 'go test -count=1 -timeout 45s ./... && go vet ./...'
+done
+```
+
+386 镜像本身是 `linux/386`；如 Docker 没有自动选择该架构，运行对应镜像时加 `--platform linux/386`。依赖变更后需先为缓存卷下载新依赖，再断网运行测试。历史验证只说明当时结果；本次通过不替代后续代码修改后的重新测试。
+
 ```bash
 ENET_REFERENCE_BINARY= go test -count=1 -timeout 45s ./internal/nativeweb ./internal/nativeproto ./cmd/nwtweb ./cmd/nwtclient ./cmd/nwtnode
 ENET_REFERENCE_BINARY= GOARCH=386 go test -count=1 -timeout 45s ./internal/nativeweb ./internal/nativeproto ./cmd/nwtweb ./cmd/nwtclient ./cmd/nwtnode
