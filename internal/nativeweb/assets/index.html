@@ -55,12 +55,13 @@
         </header>
         <p id="target-reason" class="target-reason">请从左侧选择目标，再核对名称与 ID。</p>
         <section class="session-records" aria-labelledby="records-heading">
-          <div class="section-heading"><h3 id="records-heading">此次网页会话</h3><span>仅显示本页发送记录</span></div>
-          <div id="records-scroll" class="records-scroll" tabindex="0" aria-label="本页发送记录">
-            <div id="records-empty" class="records-empty"><span class="empty-symbol" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M10 11h28v21H22l-9 7v-7h-3z"></path><path d="M17 19h14M17 25h9"></path></svg></span><h3>留一条清楚的消息</h3><p>选好目标，写下想说的话。<br>此处不接收或显示对方聊天。</p></div>
+          <div class="section-heading"><h3 id="records-heading">临时消息</h3><span>仅保留最近消息，不读取历史</span></div>
+          <p id="received-notice" class="received-notice" role="status" aria-live="polite" hidden></p>
+          <div id="records-scroll" class="records-scroll" tabindex="0" aria-label="临时收发消息">
+            <div id="records-empty" class="records-empty"><span class="empty-symbol" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M10 11h28v21H22l-9 7v-7h-3z"></path><path d="M17 19h14M17 25h9"></path></svg></span><h3>留一条清楚的消息</h3><p>选好目标，查看临时消息或写下想说的话。</p></div>
             <ol id="message-records" class="message-records"></ol>
           </div>
-          <p class="records-footnote">传输确认不代表送达或已读；本页记录刷新后不保留。</p>
+          <p class="records-footnote">传输确认不代表送达或已读；收发消息仅临时保留，后台接收缓冲有限，不读取历史。</p>
         </section>
         <form id="composer" class="composer">
           <div class="composer-heading"><label for="message-text">消息正文</label><span id="byte-count" class="byte-count">0 / 4096 字节</span></div>
@@ -75,7 +76,7 @@
         <details class="connection-details" open>
           <summary><span>后台连接</span><span class="eyebrow">SESSION</span></summary>
           <div class="connection-body">
-            <p id="connection-intro" class="connection-intro">独立身份，在明确子网正常发现并连接多个客户端。不扫描地址，不自动重连。</p>
+            <p id="connection-intro" class="connection-intro">独立身份，在明确子网正常发现并连接多个客户端。断线后自动重连，不扫描地址或重发消息。</p>
             <dl class="connection-fields"><div><dt>本机名称</dt><dd id="session-name">—</dd></div><div><dt>本机 ID</dt><dd id="session-id" class="mono">—</dd></div><div><dt id="session-remote-label">发现子网</dt><dd id="session-remote" class="mono">—</dd></div><div><dt>启动时间</dt><dd id="session-started">—</dd></div><div><dt>当前阶段</dt><dd id="session-stage" class="mono">—</dd></div></dl>
             <div class="node-name-field"><label for="node-name">上线名称</label><input id="node-name" type="text" placeholder="例如：办公消息网关" autocomplete="off" aria-describedby="node-name-hint" disabled><p id="node-name-hint">离线时可修改；只改显示名称，不更换本机身份。</p></div>
             <div class="session-actions"><button id="start-button" class="button primary" type="button" disabled>上线</button><button id="stop-button" class="button secondary" type="button" disabled>下线</button></div>
@@ -93,10 +94,10 @@
           <button id="auth-logout" class="button secondary" type="button">退出登录</button>
         </section>
         <section class="stages" aria-labelledby="stages-heading"><div class="section-heading"><h3 id="stages-heading">阶段记录</h3><span>后台事件</span></div><p id="events-empty" class="events-empty">尚无阶段记录</p><ol id="stage-list" class="stage-list" aria-label="后台阶段记录"></ol></section>
-        <div class="scope-note"><span class="scope-marker" aria-hidden="true"></span><p id="scope-description">支持多对端联系人、单聊和多成员群发送。群列表并非全部群；发送前须同步最新完整成员，向在线就绪成员投递，离线或未READY成员列为未投递；至少一名成员可用才启用发送。不离线存储、不自动补发。部分提交后请先确认，勿重复发送。暂不接收或显示对方聊天。关闭或隐藏页面不会使后台下线。</p></div>
+        <div class="scope-note"><span class="scope-marker" aria-hidden="true"></span><p id="scope-description">支持多对端联系人、单聊和多成员群发送。群列表并非全部群；发送前须同步最新完整成员，向在线就绪成员投递，离线或未READY成员列为未投递；至少一名成员可用才启用发送。不离线存储、不自动补发。部分提交后请先确认，勿重复发送。收发消息仅临时保留，不读取历史。关闭或隐藏页面不会使后台下线。</p></div>
       </aside>
     </div>
-    <footer class="app-footer"><span>内网通 · 独立 Web 客户端 · <a href="/docs">Swagger API 文档</a></span><span>仅主动发送，不自动重发</span></footer>
+    <footer class="app-footer"><span>内网通 · 独立 Web 客户端 · <a href="/docs">Swagger API 文档</a></span><span>聊天记录不落盘，不自动重发</span></footer>
   </div>
   <noscript><p class="noscript">此页面需要启用 JavaScript 才能读取后台状态与发送消息。</p></noscript>
 </body>

@@ -25,12 +25,13 @@ type ClientConfig struct {
 	ShutdownTimeout  time.Duration
 	DiscoveryTimeout time.Duration
 	HandshakeTimeout time.Duration
-	Contacts         *Directory             // 单聊时必须提供属于本身份的联系人目录；启用LearnContacts或只上线时可为nil。
-	LearnContacts    bool                   // 显式允许双向READY后学习当前已验证对端；默认保留目录必需语义。
-	ObserveDirectory func(*Directory) error // 可选；串行持久化学习后的目录，成功才发布，不能在回调中同步发送。
-	Chat             *ChatRequest           // nil 只上线；非 nil 在就绪后向选定联系人提交一条消息，不自动重试。
-	GroupChat        bool                   // 显式启用群同步和3011；不自动入群或建立额外对端连接。
-	ObserveGroup     func(GroupInfo) error  // 可选；串行保存本身份群同步快照，出错即停止，不应在回调中同步发送。
+	Contacts         *Directory                  // 单聊时必须提供属于本身份的联系人目录；启用LearnContacts或只上线时可为nil。
+	LearnContacts    bool                        // 显式允许双向READY后学习当前已验证对端；默认保留目录必需语义。
+	ObserveDirectory func(*Directory) error      // 可选；串行持久化学习后的目录，成功才发布，不能在回调中同步发送。
+	Chat             *ChatRequest                // nil 只上线；非 nil 在就绪后向选定联系人提交一条消息，不自动重试。
+	GroupChat        bool                        // 显式启用群同步和3011；不自动入群或建立额外对端连接。
+	ObserveGroup     func(GroupInfo) error       // 可选；串行保存本身份群同步快照，出错即停止，不应在回调中同步发送。
+	ReceiveMessage   func(IncomingMessage) error // 可选；串行接收正文，回调错误终止运行，不可在回调中同步发送。
 }
 
 // ClientEvent 是非正文的运行事实；不包含远端姓名、UserID、群信息或聊天内容。
@@ -75,6 +76,9 @@ type Client struct {
 	chats                map[string]*ChatResult
 	groups               map[string]GroupInfo
 	groupPending         map[string]bool
+	incoming             *incomingCache
+	incomingGroup        func(string, string) bool
+	incomingAcks         []uint64
 	chatOrder            []string
 	chatCursor           int
 	origin               time.Time
@@ -188,7 +192,7 @@ func newClient(discovery, conn packetConn, config ClientConfig) (*Client, error)
 		}
 	}
 	client := &Client{config: config, discovery: discovery, conn: conn, handshake: handshake, localMessageVersions: versions, chat: chat,
-		requests: make(chan chatCall), done: make(chan struct{}), chats: make(map[string]*ChatResult), groups: make(map[string]GroupInfo), groupPending: make(map[string]bool),
+		requests: make(chan chatCall), done: make(chan struct{}), chats: make(map[string]*ChatResult), groups: make(map[string]GroupInfo), groupPending: make(map[string]bool), incoming: &incomingCache{},
 		result: ClientResult{UnhandledCommands: make(map[uint32]int), Chat: chatResult}}
 	if config.Contacts != nil {
 		client.directory.Store(&Directory{ownID: config.Node.UserID, contacts: config.Contacts.ListContacts()})
@@ -228,6 +232,8 @@ func (c *Client) Run(ctx context.Context, observe func(ClientEvent) error) (resu
 		shutdownCtx, stop := context.WithDeadline(context.Background(), shutdownBy)
 		defer stop()
 		if c.transport != nil {
+			runErr = errors.Join(runErr, c.drainIncoming())
+			runErr = errors.Join(runErr, c.flushIncomingAcks(shutdownCtx))
 			quitOK := c.peer != nil && c.peer.Status().RemoteQuit
 			if c.result.ProtocolReady && !c.peer.Status().RemoteQuit && c.transport.failed == nil && c.transport.runtime.Status().State == ENetConnected {
 				if err := c.sendFrame(shutdownCtx, QuitFrame()); err != nil {
@@ -237,6 +243,7 @@ func (c *Client) Run(ctx context.Context, observe func(ClientEvent) error) (resu
 				}
 			}
 			closeErr := c.transport.Close(shutdownCtx)
+			runErr = errors.Join(runErr, c.drainIncoming())
 			if closeErr == nil {
 				closeErr = c.peer.Disconnect(time.Since(c.origin))
 			}
@@ -380,6 +387,9 @@ func (c *Client) Run(ctx context.Context, observe func(ClientEvent) error) (resu
 			}
 		}
 		if c.result.ProtocolReady {
+			if err := c.flushIncomingAcks(runCtx); err != nil {
+				return c.result, err
+			}
 			timers, err := c.peer.Timers(time.Since(c.origin))
 			if err != nil {
 				return c.result, err
@@ -419,8 +429,12 @@ func (c *Client) send(ctx context.Context, wire []byte, command uint32) error {
 	if err := c.emit("send_planned", command); err != nil {
 		return err
 	}
-	if err := c.transport.Send(ctx, wire); err != nil {
-		return fmt.Errorf("控制消息 %d 的传输结果未确认: %w", command, err)
+	sendErr := c.transport.Send(ctx, wire)
+	if command == CommandQuit || sendErr != nil && c.peer.Status().State == PeerOnline {
+		sendErr = errors.Join(sendErr, c.drainIncoming())
+	}
+	if sendErr != nil {
+		return fmt.Errorf("控制消息 %d 的传输结果未确认: %w", command, sendErr)
 	}
 	if err := c.peer.Observe(true, wire, time.Since(c.origin)); err != nil {
 		return err
@@ -448,6 +462,12 @@ func (c *Client) receive(ctx context.Context, wire []byte) error {
 		if err := c.peer.Observe(false, wire, time.Since(c.origin)); err != nil {
 			return err
 		}
+	case CommandUserMessage, CommandGroupMessage:
+		if c.config.ReceiveMessage != nil {
+			return c.receiveIncoming(wire, frame)
+		}
+		c.result.UnhandledCommands[frame.Command]++
+		return c.emit("unsupported_business_command", frame.Command)
 	case CommandMessageAck, CommandMessageReceipt:
 		return c.receiveChatAck(wire, frame)
 	case CommandGroupInfoPush, CommandGroupUserPush, CommandGroupUserResponse:

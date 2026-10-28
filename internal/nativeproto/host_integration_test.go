@@ -291,7 +291,7 @@ func TestHostDirectoryFailureStopsAll(t *testing.T) {
 	}
 }
 
-// TestHostPeerFailureIsolated 验证单peer业务协议错误只停止该连接，记录明确原因，不重连该身份，其余peer仍可发送。
+// TestHostPeerFailureIsolated 验证单peer业务协议错误只停止该连接，记录明确原因，其余peer仍可发送。
 func TestHostPeerFailureIsolated(t *testing.T) {
 	messages := make(chan hostObservedText, 8)
 	run := hostSyntheticFixture(t, 3, nil, nil, func(index int, frame Frame) (*Frame, error) {
@@ -324,14 +324,8 @@ func TestHostPeerFailureIsolated(t *testing.T) {
 			t.Fatalf("健康peer路由错误: %+v", message)
 		}
 	}
-	// 重新公告完全相同的失败节点，Host仍保留失败记录，不换nonce偷偷重连。
-	wire, _ := run.nodes[0].Encode()
-	target := run.host.discovery.LocalAddr().(*net.UDPAddr).AddrPort()
-	if _, err := run.discoveries[0].WriteToUDPAddrPort(wire, target); err != nil {
-		t.Fatal(err)
-	}
-	if result, err := run.host.SendUser(context.Background(), "peer-original-0", "不得重连"); err == nil || result.Submitted {
-		t.Fatal("失败身份可继续提交")
+	if result, err := run.host.SendUser(context.Background(), "peer-original-0", "离线期间不得发送"); err == nil || result.Submitted {
+		t.Fatal("离线身份可继续提交")
 	}
 	run.cancel()
 	select {

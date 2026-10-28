@@ -208,7 +208,7 @@ curl http://127.0.0.1:8788/send/user \
 
 以下接口供登录后的网页使用：
 
-- `GET /api/state`：完整网页状态。
+- `GET /api/state`：完整网页状态及本次后台会话的临时入站`messages`。每条含`sequence`、`received_at`、`command`、`message_id`、`sender_id`、`sender_name`、`group_id`、`text`；单聊`group_id`为空。`sequence`在当前后台会话内递增，用于重复轮询去重，不是协议消息编号。缓冲最近至多128条且正文合计至多1MiB；`received_total`为累计接收条数，`received_dropped`为超出预算后淘汰的旧消息数。正文不写入磁盘或运行日志；重新上线或进程退出后清空。此接口仍要求认证并返回`Cache-Control: no-store`。
 - `GET /api/contacts`、`GET /api/groups`：原网页列表形状。
 - `POST /api/session/start {"name":"自定义本机名称"}`：以所填显示名称上线；空对象 `{}` 沿用当前名称。只能在离线或上次失败后修改，在线/退出中返回409；空名、纯空白、控制字符或非法编码返回400，联网前拒绝，不静默使用旧名。只改显示名称，不更换独立身份或联系人；本进程记住新名称，重启后仍以 `-name` 配置为准。
 - `POST /api/session/stop {}`：明确请求正常下线。两者返回202表示已受理，不代表网络操作完成。

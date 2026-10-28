@@ -10,13 +10,15 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+
+	"neiwangtong-gateway/internal/nativeproto"
 )
 
 // TestSessionStartsWithCustomName 验证自定义名称进入本次配置与运行记录，保留原身份/联系人，省略参数后继续使用当前名称。
 func TestSessionStartsWithCustomName(t *testing.T) {
 	manager, fake := testManager(t)
 	configs := make(chan Config, 2)
-	manager.factory = func(config Config, _ string, _ *journal) (session, error) {
+	manager.factory = func(config Config, _ string, _ *journal, _ func(nativeproto.IncomingMessage) error) (session, error) {
 		configs <- config
 		fake.mu.Lock()
 		fake.snapshot.Online = true
@@ -80,7 +82,7 @@ func TestInvalidSessionNamesFailBeforeIO(t *testing.T) {
 	manager.config.DataDir = filepath.Join(t.TempDir(), "not-created")
 	original := manager.State().Name
 	var calls atomic.Int32
-	manager.factory = func(Config, string, *journal) (session, error) {
+	manager.factory = func(Config, string, *journal, func(nativeproto.IncomingMessage) error) (session, error) {
 		calls.Add(1)
 		t.Error("非法名称不应执行会话工厂")
 		return nil, errors.New("非法名称进入了会话工厂")

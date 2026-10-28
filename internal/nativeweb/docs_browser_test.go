@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"neiwangtong-gateway/internal/nativeproto"
 )
 
 // TestSwaggerBrowserInteraction 验证已认证会话中的真实Swagger及Try it out，仅显式启用时执行。
@@ -20,7 +22,7 @@ func TestSwaggerBrowserInteraction(t *testing.T) {
 	}
 	manager, fake, _ := startPublicManager(t)
 	// 浏览器还会主动下线再按新名称上线，合成会话每次重新发布在线，不创建真实socket。
-	manager.factory = func(Config, string, *journal) (session, error) {
+	manager.factory = func(Config, string, *journal, func(nativeproto.IncomingMessage) error) (session, error) {
 		fake.mu.Lock()
 		fake.snapshot.Online = true
 		fake.mu.Unlock()

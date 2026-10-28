@@ -26,9 +26,9 @@ type session interface {
 	SendGroup(context.Context, string, string) (nativeproto.ChatResult, error)
 }
 
-type sessionFactory func(Config, string, *journal) (session, error)
+type sessionFactory func(Config, string, *journal, func(nativeproto.IncomingMessage) error) (session, error)
 
-func openNative(config Config, runID string, log *journal) (session, error) {
+func openNative(config Config, runID string, log *journal, receive func(nativeproto.IncomingMessage) error) (session, error) {
 	ownID, err := nativeproto.LoadOrCreateIdentity(filepath.Join(config.DataDir, "identity"), rand.Reader)
 	if err != nil {
 		return nil, err
@@ -76,7 +76,7 @@ func openNative(config Config, runID string, log *journal) (session, error) {
 	}
 	var directorySequence uint64
 	cfg := nativeproto.ClientConfig{
-		Node: node, Profile: profile, Contacts: directory, LearnContacts: true, GroupChat: true,
+		Node: node, Profile: profile, Contacts: directory, LearnContacts: true, GroupChat: true, ReceiveMessage: receive,
 		ObserveDirectory: func(directory *nativeproto.Directory) error {
 			directorySequence++ // Client/Host契约保证目录回调串行；同一次上线可学到多个联系人，逐份保留新快照。
 			return saveDirectory(filepath.Join(config.DataDir, fmt.Sprintf("directory-%s-%08d.json", runID, directorySequence)), directory)

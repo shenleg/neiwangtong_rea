@@ -3,6 +3,7 @@ package nativeproto
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -128,7 +129,7 @@ func (c *Client) sendPreparedChat(ctx context.Context, chat *preparedChat, resul
 		c.trackChat(result)
 	}
 	if err != nil {
-		return fmt.Errorf("聊天消息 %d 发送未完成（submitted=%t）: %w", chat.frame.Command, result.Submitted, err)
+		return errors.Join(fmt.Errorf("聊天消息 %d 发送未完成（submitted=%t）: %w", chat.frame.Command, result.Submitted, err), c.drainIncoming())
 	}
 	result.TransportAcknowledged = true
 	if err := c.peer.Observe(true, chat.wire, time.Since(c.origin)); err != nil {

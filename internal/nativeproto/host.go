@@ -1,4 +1,4 @@
-// 本文件在两个真实UDP socket上管理多个独立Client；集中读取与分派发现/ENet包，有限次广播，不扫描、不重连或重提消息。
+// 本文件在两个真实UDP socket上管理多个独立Client；集中分派数据，对已知离线端点重新发现，不重提消息。
 package nativeproto
 
 import (
@@ -26,6 +26,9 @@ type HostConfig struct {
 	MaxPeers  int
 }
 
+// 离线端点从一秒开始指数退避，避免持续离线时频繁发送发现包。
+const hostReconnectInterval = time.Second
+
 type hostPeer struct {
 	node            NodePacket
 	client          *Client
@@ -36,6 +39,9 @@ type hostPeer struct {
 	result          ClientResult
 	err             error
 	seenGroups      map[string]GroupInfo
+	retryAt         time.Time
+	retryDelay      time.Duration
+	retryPending    bool
 }
 
 type hostGroup struct {
@@ -59,6 +65,7 @@ type Host struct {
 	identities      map[string]*hostPeer
 	directory       *Directory
 	groups          map[string]hostGroup
+	incoming        incomingCache
 	groupSends      chan struct{} // 串行群请求以保持各成员消息顺序，等待发送权时仍可响应取消。
 	callbackMu      sync.Mutex
 	observe         func(ClientEvent) error
@@ -66,6 +73,9 @@ type Host struct {
 	fatal           chan error
 	fatalOnce       sync.Once
 	peerWG          sync.WaitGroup
+	history         ClientResult
+	historyFailed   bool
+	nextPeerID      uint16
 }
 
 // NewHost 只验证配置和已绑定socket，返回尚未发包的Host；构造失败不会关闭传入socket。
@@ -111,7 +121,7 @@ func NewHost(discovery, conn *net.UDPConn, cfg HostConfig) (*Host, error) {
 		return nil, err
 	}
 	cfg.Seeds = append([]netip.AddrPort(nil), cfg.Seeds...)
-	h := &Host{config: cfg, discovery: discovery, conn: conn, local: local, groupSends: make(chan struct{}, 1), peers: make(map[netip.AddrPort]*hostPeer), enet: make(map[netip.AddrPort]*hostPeer), identities: make(map[string]*hostPeer), groups: make(map[string]hostGroup), fatal: make(chan error, 1)}
+	h := &Host{config: cfg, discovery: discovery, conn: conn, local: local, groupSends: make(chan struct{}, 1), peers: make(map[netip.AddrPort]*hostPeer), enet: make(map[netip.AddrPort]*hostPeer), identities: make(map[string]*hostPeer), groups: make(map[string]hostGroup), fatal: make(chan error, 1), history: ClientResult{UnhandledCommands: make(map[uint32]int)}}
 	if cfg.Client.Contacts != nil {
 		h.directory = &Directory{ownID: cfg.Client.Node.UserID, contacts: cfg.Client.Contacts.ListContacts()}
 	}
@@ -132,7 +142,7 @@ func hostUnicast(endpoint netip.AddrPort, prefix netip.Prefix, local netip.Addr)
 }
 
 // Run 接管socket且只能调用一次；在可接受发现时发protocol_ready，表示Host就绪，不表示有peer或接收端UI已确认。
-// 每个peer的双向READY改发peer_ready；peer失败仅记录peer_failed且不重连，observer/持久化错误停止整个Host。
+// 每个peer的双向READY改发peer_ready；peer停止后重新发现已知端点，不重发消息；observer/持久化错误停止整个Host。
 // ctx取消或Duration到期时同时停止所有peer，等待各自QUIT/断开后关闭真实socket；回调与I/O失败返回错误。
 func (h *Host) Run(ctx context.Context, observe func(ClientEvent) error) (ClientResult, error) {
 	if !h.lifecycle.CompareAndSwap(clientIdle, clientRunning) {
@@ -158,9 +168,10 @@ func (h *Host) Run(ctx context.Context, observe func(ClientEvent) error) (Client
 		h.mu.Unlock()
 		if runErr = h.emit(ClientEvent{Stage: "protocol_ready", Role: "host"}); runErr == nil {
 			result.ProtocolReady = true
-			readers.Add(2)
+			readers.Add(3)
 			go func() { defer readers.Done(); h.readPackets(peerCtx, h.discovery, true) }()
 			go func() { defer readers.Done(); h.readPackets(peerCtx, h.conn, false) }()
+			go func() { defer readers.Done(); h.reconnectPeers(peerCtx) }()
 			wire, _ := h.config.Client.Node.Encode()
 			targets := append([]netip.AddrPort(nil), h.config.Seeds...)
 			if h.config.Broadcast.IsValid() {
@@ -233,6 +244,15 @@ func (h *Host) Run(ctx context.Context, observe func(ClientEvent) error) (Client
 	h.lifecycle.Store(clientStopped)
 	result.GracefulExit = result.ProtocolReady
 	h.mu.Lock()
+	result.DiscoveryAttempts += h.history.DiscoveryAttempts
+	result.DiscoverySends += h.history.DiscoverySends
+	result.ChatSends += h.history.ChatSends
+	for command, count := range h.history.UnhandledCommands {
+		result.UnhandledCommands[command] += count
+	}
+	if h.historyFailed {
+		result.GracefulExit = false
+	}
 	for _, peer := range h.peers {
 		result.DiscoveryAttempts += peer.result.DiscoveryAttempts
 		result.DiscoverySends += peer.result.DiscoverySends
@@ -305,6 +325,61 @@ func (h *Host) readPackets(ctx context.Context, conn *net.UDPConn, discovery boo
 	}
 }
 
+// reconnectPeers只向本次会话已经发现的离线端点单播；指数间隔限制对长期离线节点的请求频率。
+func (h *Host) reconnectPeers(ctx context.Context) {
+	wire, _ := h.config.Client.Node.Encode()
+	ticker := time.NewTicker(hostReconnectInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-ticker.C:
+			type retry struct {
+				endpoint netip.AddrPort
+				index    uint16
+			}
+			var due []retry
+			h.mu.Lock()
+			for endpoint, peer := range h.peers {
+				if !h.accepting || !peer.stopped || now.Before(peer.retryAt) {
+					continue
+				}
+				peer.retryPending = true
+				peer.retryAt = now.Add(peer.retryDelay)
+				peer.retryDelay = min(peer.retryDelay*2, time.Minute)
+				due = append(due, retry{endpoint, peer.index})
+			}
+			h.mu.Unlock()
+			for _, item := range due {
+				if ctx.Err() != nil {
+					return
+				}
+				if err := h.emit(ClientEvent{Stage: "reconnect_discovery", Role: "host", PeerIndex: item.index, Command: 1}); err != nil {
+					return
+				}
+				out := newHostPacketConn(h.discovery, netip.AddrPortFrom(h.local, h.config.Client.Node.DiscoveryPort), item.endpoint)
+				_ = out.SetWriteDeadline(time.Now().Add(time.Second))
+				h.mu.Lock()
+				h.history.DiscoveryAttempts++
+				h.mu.Unlock()
+				n, err := out.WriteToUDPAddrPort(wire, item.endpoint)
+				_ = out.Close()
+				if err == nil && n != len(wire) {
+					err = io.ErrShortWrite
+				}
+				if err != nil {
+					_ = h.emit(ClientEvent{Stage: "reconnect_discovery_failed", Role: "host", PeerIndex: item.index, Error: err.Error()})
+				} else {
+					h.mu.Lock()
+					h.history.DiscoverySends++
+					h.mu.Unlock()
+				}
+			}
+		}
+	}
+}
+
 func (h *Host) stopPeer(peer *hostPeer, err error) {
 	if errors.Is(err, net.ErrClosed) {
 		return
@@ -360,25 +435,36 @@ func (h *Host) distributeDiscovery(ctx context.Context, data []byte, source neti
 		h.mu.Unlock()
 		return
 	}
-	if peer := h.peers[source]; peer != nil {
-		order, _ := peer.node.SessionOrder(node)
-		if peer.stopped {
-			h.mu.Unlock()
-			return
+	previousSource := source
+	previous := h.peers[source]
+	if previous == nil {
+		if known := h.identities[node.UserID]; known != nil && known.stopped {
+			previous = known
+			previousSource = known.discovery.remote
 		}
-		if peer.node.UserID != node.UserID || peer.node.ENetPort != node.ENetPort || order != 0 {
+	}
+	if previous != nil && previous.stopped && !previous.retryPending && time.Now().Before(previous.retryAt) {
+		h.mu.Unlock()
+		return
+	}
+	if previous != nil && !previous.stopped {
+		order, _ := previous.node.SessionOrder(node)
+		if previous.node.UserID != node.UserID || previous.node.ENetPort != node.ENetPort || order != 0 {
 			h.mu.Unlock()
 			_ = h.emit(ClientEvent{Stage: "discovery_rejected", Role: "host"})
 			return
 		}
 		h.mu.Unlock()
-		if err := peer.discovery.deliver(data, source); err != nil {
-			h.stopPeer(peer, err)
+		if err := previous.discovery.deliver(data, source); err != nil {
+			h.stopPeer(previous, err)
 		}
 		return
 	}
 	remote := netip.AddrPortFrom(source.Addr(), node.ENetPort)
-	if len(h.peers) >= h.config.MaxPeers || h.identities[node.UserID] != nil || h.enet[remote] != nil {
+	if previous != nil && previous.node.UserID != node.UserID ||
+		previous == nil && len(h.peers) >= h.config.MaxPeers ||
+		h.identities[node.UserID] != nil && h.identities[node.UserID] != previous ||
+		h.enet[remote] != nil && h.enet[remote] != previous {
 		h.mu.Unlock()
 		_ = h.emit(ClientEvent{Stage: "discovery_rejected", Role: "host"})
 		return
@@ -386,7 +472,25 @@ func (h *Host) distributeDiscovery(ctx context.Context, data []byte, source neti
 	cfg := h.config.Client
 	cfg.RemoteDiscovery = source
 	cfg.Duration = 0
-	cfg.Transport.LocalPeerID = uint16(len(h.peers))
+	index := uint16(len(h.peers) + 1)
+	if previous != nil {
+		index = previous.index
+	}
+	// 新一代使用不同的本地peer ID；ConnectID只出现在握手中，不能单独阻止旧数据包进入新会话。
+	for {
+		cfg.Transport.LocalPeerID = h.nextPeerID
+		h.nextPeerID = (h.nextPeerID + 1) % 0x0fff
+		used := false
+		for _, candidate := range h.peers {
+			if candidate.client.config.Transport.LocalPeerID == cfg.Transport.LocalPeerID {
+				used = true
+				break
+			}
+		}
+		if !used {
+			break
+		}
+	}
 	if _, err := rand.Read(cfg.Transport.ConnectID[:]); err != nil {
 		h.mu.Unlock()
 		h.fail(err)
@@ -401,13 +505,30 @@ func (h *Host) distributeDiscovery(ctx context.Context, data []byte, source neti
 		cfg.Contacts = &Directory{ownID: h.directory.ownID, contacts: h.directory.ListContacts()}
 	}
 	peerCtx, cancel := context.WithCancel(ctx)
-	peer := &hostPeer{node: node, index: cfg.Transport.LocalPeerID + 1, cancel: cancel, seenGroups: make(map[string]GroupInfo)}
+	peer := &hostPeer{node: node, index: index, cancel: cancel, seenGroups: make(map[string]GroupInfo)}
+	if previous != nil {
+		peer.retryAt, peer.retryDelay = previous.retryAt, previous.retryDelay
+	}
 	peer.discovery = newHostPacketConn(h.discovery, netip.AddrPortFrom(h.local, cfg.Node.DiscoveryPort), source)
 	peer.conn = newHostPacketConn(h.conn, netip.AddrPortFrom(h.local, cfg.Node.ENetPort), remote)
 	cfg.ObserveDirectory = func(directory *Directory) error { return h.learnDirectory(peer.node.UserID, directory) }
 	cfg.ObserveGroup = func(group GroupInfo) error { return h.learnGroup(peer, group) }
+	if cfg.ReceiveMessage != nil {
+		cfg.ReceiveMessage = func(message IncomingMessage) error {
+			h.callbackMu.Lock()
+			defer h.callbackMu.Unlock()
+			if h.config.Client.ReceiveMessage(message) != nil {
+				err := fmt.Errorf("接收消息回调失败")
+				h.fail(err)
+				return err
+			}
+			return nil
+		}
+	}
 	peer.client, err = newClient(peer.discovery, peer.conn, cfg)
 	if err == nil {
+		peer.client.incoming = &h.incoming
+		peer.client.incomingGroup = h.incomingMember
 		err = peer.discovery.deliver(data, source)
 	}
 	if err != nil {
@@ -415,6 +536,19 @@ func (h *Host) distributeDiscovery(ctx context.Context, data []byte, source neti
 		h.mu.Unlock()
 		h.fail(err)
 		return
+	}
+	if previous != nil {
+		h.history.DiscoveryAttempts += previous.result.DiscoveryAttempts
+		h.history.DiscoverySends += previous.result.DiscoverySends
+		h.history.ChatSends += previous.result.ChatSends
+		for command, count := range previous.result.UnhandledCommands {
+			h.history.UnhandledCommands[command] += count
+		}
+		if !previous.result.GracefulExit || previous.err != nil {
+			h.historyFailed = true
+		}
+		delete(h.peers, previousSource)
+		delete(h.enet, netip.AddrPortFrom(previousSource.Addr(), previous.node.ENetPort))
 	}
 	h.peers[source], h.enet[remote], h.identities[node.UserID] = peer, peer, peer
 	h.peerWG.Add(1)
@@ -425,11 +559,21 @@ func (h *Host) distributeDiscovery(ctx context.Context, data []byte, source neti
 		result, err := peer.client.Run(peerCtx, func(event ClientEvent) error { return h.peerEvent(peer, event) })
 		h.mu.Lock()
 		err = errors.Join(peer.err, err)
-		peer.result, peer.err, peer.stopped = result, err, true
+		peer.result, peer.err = result, err
 		h.mu.Unlock()
 		if err != nil {
 			_ = h.emit(ClientEvent{Stage: "peer_failed", Role: result.Role, PeerIndex: peer.index, Error: err.Error()})
 		}
+		h.mu.Lock()
+		peer.stopped = true
+		peer.retryPending = false
+		if peer.retryDelay == 0 {
+			peer.retryDelay = hostReconnectInterval
+		}
+		if !peer.retryAt.After(time.Now()) {
+			peer.retryAt = time.Now().Add(peer.retryDelay)
+		}
+		h.mu.Unlock()
 	}()
 }
 
@@ -453,6 +597,9 @@ func (h *Host) peerEvent(peer *hostPeer, event ClientEvent) error {
 		}
 	}
 	peer.seenGroups = current
+	if event.Stage == "protocol_ready" {
+		peer.retryAt, peer.retryDelay = time.Time{}, 0
+	}
 	h.mu.Unlock()
 	if event.Stage == "protocol_ready" {
 		event.Stage = "peer_ready"

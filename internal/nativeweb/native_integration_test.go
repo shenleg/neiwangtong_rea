@@ -207,8 +207,10 @@ func nativeFirstStartSendAndRestore(t *testing.T, viaHTTP bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	received := make(chan nativeproto.IncomingMessage, 2)
 	peer, err := nativeproto.NewClient(peerDiscovery, peerENet, nativeproto.ClientConfig{
 		Node: node, Profile: profile, RemoteDiscovery: localDiscoveryAddr, LearnContacts: true,
+		ReceiveMessage: func(message nativeproto.IncomingMessage) error { received <- message; return nil },
 		Transport: nativeproto.ENetConfig{LocalPeerID: 1, ConnectID: [4]byte{1, 2, 3, 4}, MTU: 1400, WindowBytes: 65536,
 			MaxMessageBytes: 1 << 20, MaxQueuedBytes: 2 << 20, MaxPendingCommands: 1024,
 			RetransmitAfter: 100 * time.Millisecond, MaxAttempts: 6, ReceiveTimeout: 10 * time.Second, PingInterval: time.Second},
@@ -219,7 +221,6 @@ func nativeFirstStartSendAndRestore(t *testing.T, viaHTTP bool) {
 	}
 	ctx, cancelPeer := context.WithTimeout(context.Background(), 15*time.Second)
 	peerDone, peerReady := make(chan struct{}), make(chan struct{})
-	received := make(chan nativeproto.ClientEvent, 1)
 	var peerResult nativeproto.ClientResult
 	var peerErr error
 	peerStarted := false
@@ -268,9 +269,6 @@ func nativeFirstStartSendAndRestore(t *testing.T, viaHTTP bool) {
 		peerResult, peerErr = peer.Run(ctx, func(event nativeproto.ClientEvent) error {
 			if event.Stage == "protocol_ready" {
 				close(peerReady)
-			}
-			if event.Stage == "unsupported_business_command" && event.Command == nativeproto.CommandUserMessage {
-				received <- event
 			}
 			return nil
 		})
@@ -330,13 +328,29 @@ func nativeFirstStartSendAndRestore(t *testing.T, viaHTTP bool) {
 	if status != http.StatusOK || response.Error != "" || response.Result.Command != nativeproto.CommandUserMessage || response.Result.MessageID == "" || !response.Result.Submitted || !response.Result.TransportAcknowledged || response.Result.Delivery != "unknown" {
 		t.Fatalf("真实SendUser结果：%d %+v", status, response)
 	}
-	// Client公开接口不暴露入站正文，也不提供任意群推送；此处验证对端确实收到1004，全文解析及3003/3011留在nativeproto测试。
 	select {
-	case <-received:
+	case message := <-received:
+		if message.Text != text || message.SenderID != state.OwnUserID || message.Command != nativeproto.CommandUserMessage {
+			t.Fatalf("独立对端收到的正文或身份错误: %+v", message)
+		}
 	case <-peerDone:
 		t.Fatalf("对端收到1004前退出：%+v %v", peerResult, peerErr)
 	case <-ctx.Done():
 		t.Fatal("独立对端未观察到1004")
+	}
+	const incomingText = "独立对端回复合成正文\n<&nbsp;>🙂\r\n结束"
+	incomingResult, err := peer.SendUser(ctx, state.OwnUserID, incomingText)
+	if err != nil || !incomingResult.Submitted || !incomingResult.TransportAcknowledged {
+		t.Fatalf("独立对端发送回复失败: %+v %v", incomingResult, err)
+	}
+	awaitNativeIntegrationStage(t, manager, "message_received")
+	recorded := performRequest(testHandler(t, manager), http.MethodGet, "/api/state", "")
+	var incomingState State
+	if err := json.Unmarshal(recorded.Body.Bytes(), &incomingState); err != nil {
+		t.Fatal(err)
+	}
+	if recorded.Code != http.StatusOK || len(incomingState.Messages) != 1 || incomingState.Messages[0].Text != incomingText || incomingState.Messages[0].SenderID != peerID || incomingState.Messages[0].SenderName != peerName {
+		t.Fatalf("Web未显示独立对端的完整正文: %+v", incomingState.Messages)
 	}
 	manager.Stop()
 	stopped := awaitPhase(t, manager, "offline")
@@ -345,7 +359,7 @@ func nativeFirstStartSendAndRestore(t *testing.T, viaHTTP bool) {
 	}
 	select {
 	case <-peerDone:
-		if peerErr != nil || !peerResult.ProtocolReady || !peerResult.GracefulExit || peerResult.UnhandledCommands[nativeproto.CommandUserMessage] != 1 {
+		if peerErr != nil || !peerResult.ProtocolReady || !peerResult.GracefulExit || peerResult.UnhandledCommands[nativeproto.CommandUserMessage] != 0 {
 			t.Fatalf("对端退出或1004次数错误：%+v %v", peerResult, peerErr)
 		}
 	case <-ctx.Done():
@@ -355,7 +369,7 @@ func nativeFirstStartSendAndRestore(t *testing.T, viaHTTP bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved := restored.State(); saved.Phase != "offline" || saved.OwnUserID != state.OwnUserID || len(saved.Contacts) != 1 || saved.Contacts[0].Contact != contact.Contact || saved.Contacts[0].Sendable || saved.Contacts[0].Online {
-		t.Fatalf("停止后无法恢复相同身份及目录：%+v", saved)
+	if saved := restored.State(); saved.Phase != "offline" || saved.OwnUserID != state.OwnUserID || len(saved.Contacts) != 1 || saved.Contacts[0].Contact != contact.Contact || saved.Contacts[0].Sendable || saved.Contacts[0].Online || len(saved.Messages) != 0 {
+		t.Fatalf("停止后身份目录或临时消息恢复错误：%+v", saved)
 	}
 }

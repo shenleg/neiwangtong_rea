@@ -11,6 +11,7 @@ import { webcrypto } from "node:crypto";
 // 无浏览器或socket的合成DOM模式，便于在不能启动sandbox浏览器的环境运行结果回归。
 if (process.argv[2] === "--synthetic-only") {
   await checkSyntheticGroupResults();
+  await checkSyntheticReceivedMessages();
   await checkSwaggerAuth();
   process.exit(0);
 }
@@ -58,7 +59,7 @@ try {
       { group_id: "mixed-group", name: "合成在线离线群", members: ["synthetic-own", "synthetic-peer", "offline-peer"], sendable: true, reason: "" },
       { group_id: "offline-group", name: "合成全离线群", members: ["synthetic-own", "offline-peer", "missing-peer"], sendable: false, reason: "没有可用的READY群成员，不投递、不自动补发" },
     ],
-    events: [{ stage: "protocol_ready", elapsed_ms: 50 }],
+    events: [{ stage: "protocol_ready", elapsed_ms: 50 }], messages: [], received_total: 0, received_dropped: 0,
   };
   const posts = [];
   let stateGets = 0;
@@ -320,7 +321,7 @@ async function checkSyntheticGroupResults() {
           contacts: [{ user_id: "synthetic-peer", name: "合成联系人", online: mode !== "offline", sendable: mode !== "offline" },
             { user_id: mode === "ready" ? "third-peer" : "offline-peer", name: "合成群成员", online: mode === "ready", sendable: mode === "ready" }],
           groups: [{ group_id: "multi-group", name: "合成多成员群", members: ["synthetic-own", "synthetic-peer", mode === "ready" ? "third-peer" : "offline-peer"],
-            sendable: mode !== "offline", reason: mode === "offline" ? "没有可用的READY群成员" : "" }], events: [] };
+            sendable: mode !== "offline", reason: mode === "offline" ? "没有可用的READY群成员" : "" }], events: [], messages: [], received_total: 0, received_dropped: 0 };
         reachable = true;
         selected = { kind: "group", id: "multi-group", name: "合成多成员群" };
         records.length = 0;
@@ -431,4 +432,229 @@ async function checkSyntheticGroupResults() {
   fixture.apply([{ command: 1004, stage: "transport_acknowledged", message_id: "7", peer_index: 1 }]);
   assert.equal(fixture.records[0].result.transport_acknowledged, true);
   console.log(JSON.stringify({ checks: ["首次初始化、登录、退出与一次性 Key 生成/撤销", "多成员群全部传输确认", "在线加离线群HTTP200清稿并显示skipped及原因，整群ACK仍false", "全部离线禁用且无POST", "HTTP502及实际路由失败保留逐成员结果与草稿", "单peer及同号单聊事件不修改群聚合结果", "1004传输/1005业务ACK/1006回执按阶段回填单聊", "事件刷新不重发POST"], messagePosts: posts.length, network: "无socket，仅合成DOM/fetch" }, null, 2));
+}
+
+/** 用合成 DOM 和 GET 快照驱动完整页面，验证接收消息、会话及认证边界；不打开 socket，断言失败时抛错。 */
+async function checkSyntheticReceivedMessages() {
+  class Element {
+    constructor(tag = "div") {
+      this.tagName = tag.toLowerCase();
+      this.children = [];
+      this.dataset = {};
+      this.attributes = {};
+      this.listeners = {};
+      this.value = "";
+      this.className = "";
+      this.text = "";
+      this.scrollHeight = this.scrollTop = this.clientHeight = 0;
+      this.classList = {
+        toggle: (name, enabled) => {
+          const classes = new Set(this.className.split(/\s+/).filter(Boolean));
+          if (enabled ?? !classes.has(name)) classes.add(name); else classes.delete(name);
+          this.className = [...classes].join(" ");
+        },
+        contains: (name) => this.className.split(/\s+/).includes(name),
+      };
+    }
+    set textContent(value) { this.text = String(value); this.children = []; }
+    get textContent() { return this.text + this.children.map((child) => child.textContent).join(""); }
+    append(...children) {
+      for (const child of children) {
+        if (child.tagName === "fragment") this.append(...child.children);
+        else this.children.push(child);
+      }
+    }
+    replaceChildren(...children) { this.text = ""; this.children = []; this.append(...children); }
+    setAttribute(name, value) { this.attributes[name] = String(value); }
+    getAttribute(name) { return this.attributes[name] ?? null; }
+    addEventListener(type, listener) { (this.listeners[type] ??= []).push(listener); }
+    dispatch(type, properties = {}) {
+      for (const listener of this.listeners[type] ?? []) listener({ preventDefault() {}, target: this, ...properties });
+    }
+    contains(element) { return element === this || this.children.some((child) => child.contains(element)); }
+    focus() { document.activeElement = this; }
+    querySelectorAll(selector) {
+      const descendants = this.children.flatMap((child) => [child, ...child.querySelectorAll(selector)]);
+      return descendants.filter((child) => {
+        if (selector === "details[open]") return child.tagName === "details" && child.open;
+        const [tag, ...classes] = selector.split(".");
+        return (!tag || child.tagName === tag) && classes.every((name) => child.classList.contains(name));
+      });
+    }
+  }
+  const elements = new Map();
+  const tabs = ["user", "group"].map((kind) => {
+    const tab = new Element("button");
+    tab.dataset.kind = kind;
+    tab.id = `tab-${kind}`;
+    return tab;
+  });
+  const document = {
+    activeElement: null,
+    getElementById(id) {
+      if (!elements.has(id)) elements.set(id, new Element());
+      return elements.get(id);
+    },
+    createElement: (tag) => new Element(tag),
+    createDocumentFragment: () => new Element("fragment"),
+    querySelectorAll: (selector) => selector === '[role="tab"]' ? tabs : [],
+  };
+  const $ = (id) => document.getElementById(id);
+  let auth = { initialized: true, authenticated: true, api_key_configured: false };
+  let snapshot = {
+    phase: "online", name: "合成本机", started_at: "2026-10-25T00:00:00Z", own_user_id: "own", remote: "127.0.0.0/8",
+    stage: "protocol_ready", error: "", max_text_bytes: 4096,
+    contacts: [
+      { user_id: "alice", name: "Alice", discovery: "synthetic", online: true, sendable: true, reason: "" },
+      { user_id: "bob", name: "Bob", discovery: "synthetic", online: true, sendable: true, reason: "" },
+    ],
+    groups: [{ group_id: "group", name: "测试群", members: ["own", "alice", "bob"], sendable: true, reason: "" }],
+    events: [], messages: [], received_total: 0, received_dropped: 0,
+  };
+  let stateStatus = 200;
+  let pendingState;
+  let getCount = 0;
+  const posts = [];
+  const reply = (data, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => structuredClone(data) });
+  const context = {
+    document, TextEncoder, AbortSignal,
+    window: { crypto: webcrypto, setInterval() {} },
+    fetch: async (url, options) => {
+      assert.equal(options.redirect, "error");
+      if (url === "/auth/status") return reply(auth);
+      if (url === "/auth/logout") { auth.authenticated = false; return reply({}); }
+      if (url === "/auth/login") { auth.authenticated = true; return reply({}); }
+      if (url === "/api/state") {
+        assert.equal(options.method, undefined, "状态只能通过 GET 读取");
+        getCount++;
+        if (pendingState) return pendingState.promise;
+        return reply(snapshot, stateStatus);
+      }
+      assert.equal(url, "/api/messages/user", "不允许其他网络请求");
+      assert.equal(options.method, "POST");
+      posts.push(JSON.parse(options.body));
+      return reply({ result: { command: 1004, message_id: "7", submitted: true, transport_acknowledged: false,
+        business_acknowledged: false, receipt_received: false, delivery: "unknown" }, error: "" });
+    },
+  };
+  const source = await readFile(new URL("../internal/nativeweb/assets/app.js", import.meta.url), "utf8");
+  const css = await readFile(new URL("../internal/nativeweb/assets/app.css", import.meta.url), "utf8");
+  assert.match(css, /\.record-text\s*\{[^}]*white-space:\s*pre-wrap\s*;/, "消息样式必须保留换行");
+  const boundary = source.indexOf('  $("auth-form").addEventListener');
+  assert.ok(boundary > 0, "必须运行真实页面的事件绑定和初始化");
+  runInNewContext(source.slice(0, boundary) + "  globalThis.fixture = { refreshState, refreshAuth, changeAuth, submitAuth };\n" + source.slice(boundary), context);
+  const { fixture } = context;
+  await fixture.refreshAuth();
+  await fixture.refreshState();
+  const select = (kind, id) => {
+    tabs.find((tab) => tab.dataset.kind === kind).dispatch("click");
+    const button = $("target-list").querySelectorAll("button").find((item) => item.dataset.key === `${kind}:${id}`);
+    assert.ok(button, `目标 ${kind}:${id} 应存在`);
+    button.dispatch("click");
+  };
+  const target = (id) => $("target-list").querySelectorAll("button").find((item) => item.dataset.key === id);
+  const received = () => $("message-records").querySelectorAll(".message-record.received");
+  const push = (sequence, command, sender, group, text, messageID = "7") => {
+    snapshot.messages.push({ sequence, received_at: `2026-10-25T00:00:${String(sequence).padStart(2, "0")}Z`, command,
+      message_id: messageID, sender_id: sender, sender_name: sender === "alice" ? "Alice" : "Bob", group_id: group, text });
+    snapshot.received_total++;
+  };
+  const refresh = async () => { const before = getCount; await fixture.refreshState(); assert.ok(getCount > before, "必须执行状态 GET"); };
+  const body = (item) => item.querySelectorAll(".record-text")[0].textContent;
+
+  select("user", "alice");
+  $("message-text").value = "发送待确认";
+  $("message-text").dispatch("input");
+  $("composer").dispatch("submit");
+  // 等待真实发送处理中的自动刷新完成。
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(posts.length, 1);
+  assert.match($("message-records").textContent, /传输确认：未确认/);
+  $("message-text").value = "Alice 草稿";
+  $("message-text").dispatch("input");
+  push(1, 1004, "alice", "", "单聊第一行\n<img src=x onerror=alert(1)>");
+  push(2, 1004, "bob", "", "Bob 单聊同编号");
+  push(3, 3011, "alice", "group", "Alice 群消息同编号");
+  push(4, 3011, "bob", "group", "Bob 群消息同编号");
+  await refresh();
+  assert.equal($("target-name").textContent, "Alice", "入站消息不能切换目标");
+  assert.equal($("message-text").value, "Alice 草稿", "入站消息不能覆盖草稿");
+  assert.equal(received().length, 1);
+  assert.equal(body(received()[0]), "单聊第一行\n<img src=x onerror=alert(1)>");
+  assert.equal(received()[0].querySelectorAll("img").length, 0, "正文必须作为文本而非 HTML");
+  assert.match($("message-records").textContent, /传输确认：未确认/);
+  assert.match($("message-records").textContent, /业务 ACK：未确认 · 协议回执：未确认/, "同编号入站消息不得改变发送 ACK");
+  assert.equal(target("user:bob").querySelectorAll(".unread-count")[0].textContent, "1");
+  assert.match(target("user:bob").getAttribute("aria-label"), /1 条未读/);
+  await refresh();
+  assert.equal(received().length, 1, "重复快照不得重复显示");
+  assert.equal(target("user:bob").querySelectorAll(".unread-count")[0].textContent, "1", "重复快照不得重复计未读");
+
+  select("user", "bob");
+  assert.equal(received().length, 1);
+  assert.equal(body(received()[0]), "Bob 单聊同编号");
+  assert.equal(target("user:bob").querySelectorAll(".unread-count").length, 0, "选择会话清除未读");
+  tabs.find((tab) => tab.dataset.kind === "group").dispatch("click");
+  assert.equal(target("group:group").querySelectorAll(".unread-count")[0].textContent, "2", "群消息按条累计未读");
+  select("group", "group");
+  assert.equal(received().length, 2, "不同发送者的同编号群消息均应显示");
+  assert.deepEqual(received().map(body), ["Alice 群消息同编号", "Bob 群消息同编号"]);
+  assert.match(received()[0].textContent, /Alice/);
+  assert.match(received()[1].textContent, /Bob/);
+  assert.equal(target("group:group").querySelectorAll(".unread-count").length, 0);
+  select("user", "alice");
+  assert.equal($("message-text").value, "Alice 草稿");
+  snapshot.received_dropped = 2;
+  await refresh();
+  assert.match($("received-notice").textContent, /2/, "丢弃数量必须显示");
+
+  snapshot = { ...snapshot, started_at: "2026-10-25T01:00:00Z", messages: [], received_total: 0, received_dropped: 0 };
+  push(1, 1004, "alice", "", "新会话同序号");
+  await refresh();
+  assert.equal(received().length, 1, "新后台会话清除旧接收正文并接受同序号");
+  assert.equal(body(received()[0]), "新会话同序号");
+
+  // 退出时即使此前 GET 晚到，也不能把旧正文写回未认证页面。
+  let resolvePending;
+  pendingState = { promise: new Promise((resolve) => { resolvePending = resolve; }) };
+  const stale = fixture.refreshState();
+  await fixture.changeAuth("logout");
+  assert.equal($("app-shell").hidden, true);
+  assert.doesNotMatch($("message-records").textContent, /新会话同序号|单聊第一行|发送待确认/, "退出必须清除收发正文");
+  assert.equal($("message-text").value, "");
+  const oldSnapshot = structuredClone(snapshot);
+  pendingState = null;
+  resolvePending(reply(oldSnapshot));
+  await stale;
+  assert.doesNotMatch($("message-records").textContent, /新会话同序号|单聊第一行/, "退出后的旧 GET 不得恢复正文");
+  snapshot = { ...snapshot, messages: [], received_total: 0, received_dropped: 0 };
+  $("auth-password").value = "synthetic-password";
+  await fixture.submitAuth({ preventDefault() {} });
+  await fixture.refreshState();
+  select("user", "alice");
+  assert.doesNotMatch($("message-records").textContent, /新会话同序号|单聊第一行/, "重新登录空快照不得恢复本地旧正文");
+  snapshot = structuredClone(oldSnapshot);
+  await refresh();
+  assert.match($("message-records").textContent, /新会话同序号/, "有效认证后允许读取后台当前缓冲");
+  push(2, 1004, "alice", "", "401 前消息");
+  await refresh();
+  assert.match($("message-records").textContent, /401 前消息/);
+  $("message-text").value = "401 前草稿";
+  $("message-text").dispatch("input");
+  auth.authenticated = false;
+  stateStatus = 401;
+  await refresh();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal($("app-shell").hidden, true);
+  assert.doesNotMatch($("message-records").textContent, /401 前消息/, "401 必须清空正文 DOM");
+  assert.equal($("message-text").value, "");
+  snapshot = { ...snapshot, messages: [], received_total: 0, received_dropped: 0 };
+  stateStatus = 200;
+  $("auth-password").value = "synthetic-password";
+  await fixture.submitAuth({ preventDefault() {} });
+  await fixture.refreshState();
+  select("user", "alice");
+  assert.doesNotMatch($("message-records").textContent, /401 前消息/, "重新登录空快照不得恢复 401 前正文");
+  assert.equal(posts.length, 1, "状态刷新和接收不得触发发送");
+  console.log(JSON.stringify({ checks: ["GET 接收单聊及多发送者群聊，同编号隔离与重复轮询去重", "未读与清除、目标和草稿保持、换行及 HTML 文本安全", "丢弃提示、新后台会话、退出/401 清理及旧 GET", "入站消息不更改发送 ACK、不自动发送"], stateGets: getCount, network: "无socket，仅合成DOM/fetch" }, null, 2));
 }

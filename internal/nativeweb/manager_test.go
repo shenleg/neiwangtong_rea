@@ -26,6 +26,7 @@ type fakeSession struct {
 	sendErr    error
 	requests   []nativeproto.ChatRequest
 	recipients []nativeproto.GroupRecipientResult
+	receive    func(nativeproto.IncomingMessage) error
 }
 
 // Run 发布合成就绪事件并等待取消，返回正常退出；回调失败直接返回，不执行任何网络操作。
@@ -103,7 +104,12 @@ func testManager(t *testing.T) (*Manager, *fakeSession) {
 			{UserID: "other-peer", Name: "其他联系人", Discovery: netip.MustParseAddrPort("127.0.0.3:9011")}},
 		Groups: []nativeproto.GroupInfo{{GroupID: "group-two", Name: "双成员群", Members: []string{"synthetic-own", "synthetic-peer"}},
 			{GroupID: "group-three", Name: "多成员群", Members: []string{"synthetic-own", "synthetic-peer", "other-peer"}}}}}
-	manager.factory = func(Config, string, *journal) (session, error) { return fake, nil }
+	manager.factory = func(_ Config, _ string, _ *journal, receive func(nativeproto.IncomingMessage) error) (session, error) {
+		fake.mu.Lock()
+		fake.receive = receive
+		fake.mu.Unlock()
+		return fake, nil
+	}
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -386,7 +392,7 @@ func TestCancellationDoesNotHideCleanupFailure(t *testing.T) {
 func TestFactoryFailureRemainsFailedWithoutReconnect(t *testing.T) {
 	manager, _ := testManager(t)
 	var calls atomic.Int32
-	manager.factory = func(Config, string, *journal) (session, error) {
+	manager.factory = func(Config, string, *journal, func(nativeproto.IncomingMessage) error) (session, error) {
 		calls.Add(1)
 		return nil, errors.New("synthetic setup failure")
 	}

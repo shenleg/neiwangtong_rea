@@ -52,6 +52,17 @@ func TestOpenAPIRoutesAndLocalReferences(t *testing.T) {
 	if !strings.Contains(remote["description"].(string), "子网 CIDR") {
 		t.Fatal("remote应说明发现子网CIDR，而非单对端地址")
 	}
+	for _, field := range []string{"messages", "received_total", "received_dropped"} {
+		if _, ok := stateProperties[field]; !ok {
+			t.Errorf("状态规范缺少临时接收字段: %s", field)
+		}
+	}
+	incoming := schemas["ReceivedMessage"].(map[string]any)["properties"].(map[string]any)
+	for _, field := range []string{"sequence", "received_at", "command", "message_id", "sender_id", "sender_name", "group_id", "text"} {
+		if _, ok := incoming[field]; !ok {
+			t.Errorf("接收消息规范缺少字段: %s", field)
+		}
+	}
 	checkLocalRefs(t, document, document)
 	for path, methods := range paths {
 		for method := range methods.(map[string]any) {

@@ -1,4 +1,4 @@
-// 本文件管理同源认证、状态轮询、每目标草稿及单次发送记录；写请求只由用户明确操作触发，失败不自动重发。
+// 本文件管理同源认证、状态轮询、临时收发记录及每目标草稿；写请求只由用户明确操作触发，失败不自动重发。
 (() => {
   "use strict";
 
@@ -8,7 +8,15 @@
   const drafts = new Map();
   const warnings = new Map();
   const records = [];
+  const received = [];
+  const unread = new Map();
+  const recordLimit = 128;
+  const byteLimit = 1024 * 1024;
   const sessionPending = new Set();
+  let receivedSession = null;
+  let receivedCursor = 0;
+  let authRevision = 0;
+  let recordOrder = 0;
   const unknownNotice = "结果未知，请先确认，勿重复发送";
   let state = null;
   let reachable = false;
@@ -80,7 +88,7 @@
   function renderDirectory() {
     if (!state) return;
     const search = $("directory-search").value.toLocaleLowerCase();
-    const signature = JSON.stringify([activeKind, search, selected, state.contacts, state.groups]);
+    const signature = JSON.stringify([activeKind, search, selected, state.contacts, state.groups, Array.from(unread)]);
     if (signature === directorySignature) return;
     directorySignature = signature;
     const focusedKey = $("target-list").contains(document.activeElement) ? document.activeElement.dataset.key : null;
@@ -98,12 +106,14 @@
       button.setAttribute("aria-pressed", String(Boolean(selected && keyOf(selected) === keyOf(target))));
       const available = item.sendable && (activeKind === "group" || item.online);
       const label = activeKind === "user" ? (item.online ? (item.sendable ? "在线" : "不可发送") : "离线") : (item.sendable ? "可发送" : "不可发送");
-      button.setAttribute("aria-label", `${item.name}，ID ${id}，${label}`);
+      const count = unread.get(keyOf(target)) || 0;
+      button.setAttribute("aria-label", `${item.name}，ID ${id}，${label}${count ? `，${count} 条未读` : ""}`);
       const avatar = node("span", `target-avatar${activeKind === "group" ? " group" : ""}`, activeKind === "group" ? "群" : Array.from(item.name)[0] || "人");
       avatar.setAttribute("aria-hidden", "true");
       const info = node("span", "target-info");
       info.append(node("strong", "", item.name), node("small", "mono", id));
       button.append(avatar, info, node("span", `target-state${available ? " available" : ""}`, label));
+      if (count) button.append(node("span", "unread-count", String(count)));
       button.addEventListener("click", () => selectTarget(target));
       const row = node("li");
       row.append(button);
@@ -121,6 +131,8 @@
 
   function selectTarget(target) {
     selected = target;
+    unread.delete(keyOf(target));
+    for (const record of received) if (record.key === keyOf(target)) record.unread = false;
     $("message-text").value = drafts.get(keyOf(target)) || "";
     renderDirectory();
     renderTarget();
@@ -244,15 +256,67 @@
     if (changed) renderRecords();
   }
 
+  // 后台序列只用于接收去重，与发送回执的 message_id 无关。
+  function receiveSnapshot() {
+    const current = sessionKey(state);
+    if (receivedSession !== current) {
+      received.length = 0;
+      unread.clear();
+      receivedCursor = 0;
+      receivedSession = current;
+    }
+    for (const message of state.messages) {
+      if (message.sequence <= receivedCursor) continue;
+      receivedCursor = message.sequence;
+      const target = message.command === 3011 ? { kind: "group", id: message.group_id } : { kind: "user", id: message.sender_id };
+      const key = keyOf(target);
+      const isUnread = !selected || keyOf(selected) !== key;
+      received.push({ ...message, key, unread: isUnread, order: ++recordOrder });
+      if (isUnread) unread.set(key, (unread.get(key) || 0) + 1);
+    }
+    trimRecords();
+    $("received-notice").textContent = state.received_dropped ? `后台已丢弃 ${state.received_dropped} 条接收消息，较早消息可能不可见。` : "";
+    $("received-notice").hidden = !state.received_dropped;
+  }
+
+  // 两类记录共享数量和字节预算；淘汰未读消息时同步减少未读数。
+  function trimRecords() {
+    const size = () => encoder.encode(JSON.stringify([...records, ...received])).length;
+    while (records.length + received.length > recordLimit || size() > byteLimit) {
+      const firstSend = records.find((record) => !record.pending);
+      const firstReceive = received[0];
+      if (!firstSend && !firstReceive) break;
+      if (firstReceive && (!firstSend || firstReceive.order < firstSend.order)) {
+        received.shift();
+        if (firstReceive.unread) {
+          const count = unread.get(firstReceive.key) - 1;
+          if (count) unread.set(firstReceive.key, count);
+          else unread.delete(firstReceive.key);
+        }
+      } else records.splice(records.indexOf(firstSend), 1);
+    }
+  }
+
   function renderRecords() {
     const list = $("message-records");
     const scroller = $("records-scroll");
     const nearBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 70;
     const openDetails = new Set(Array.from(list.querySelectorAll("details[open]")).map((detail) => detail.dataset.request));
-    const visible = selected ? records.filter((record) => record.key === keyOf(selected)) : [];
+    const visible = selected ? [...records, ...received].filter((record) => record.key === keyOf(selected)).sort((a, b) => a.order - b.order) : [];
     const fragment = document.createDocumentFragment();
     for (const record of visible) {
-      const item = node("li", "message-record");
+      if (record.sequence !== undefined) {
+        const item = node("li", "message-record received");
+        const heading = node("div", "record-heading");
+        const at = new Date(record.received_at);
+        const time = node("time", "", at.toLocaleString("zh-CN", { hour12: false }));
+        time.dateTime = record.received_at;
+        heading.append(node("strong", "", `收到 · ${record.sender_name}`), time);
+        item.append(heading, node("div", "record-text", record.text));
+        fragment.append(item);
+        continue;
+      }
+      const item = node("li", "message-record sent");
       const heading = node("div", "record-heading");
       const time = node("time", "", record.at.toLocaleTimeString("zh-CN", { hour12: false }));
       time.dateTime = record.at.toISOString();
@@ -301,7 +365,11 @@
       options.headers = { "Content-Type": "application/json" };
       options.body = JSON.stringify(payload);
     }
+    const revision = authRevision;
     const response = await fetch(path, options);
+    if (revision === authRevision && response.status === 401 && (path.startsWith("/api/") || path === "/auth/api-key" || path === "/auth/logout")) {
+      showAuth({ initialized, authenticated: false, api_key_configured: keyConfigured });
+    }
     const data = response.status === 204 ? {} : await response.json();
     return { ok: response.ok, status: response.status, data };
   }
@@ -309,6 +377,47 @@
   function clearKey() {
     $("key-value").textContent = "";
     $("key-result").hidden = true;
+  }
+
+  // 认证失效后，旧请求即使随后返回也不能重新写入页面。
+  function clearSensitive() {
+    authenticated = false;
+    authRevision += 1;
+    sessionRevision += 1;
+    state = null;
+    reachable = false;
+    selected = null;
+    activeSend = null;
+    records.length = 0;
+    received.length = 0;
+    unread.clear();
+    drafts.clear();
+    warnings.clear();
+    sessionPending.clear();
+    sessionStateUncertain = false;
+    nameEdited = false;
+    receivedSession = null;
+    receivedCursor = 0;
+    directorySignature = "";
+    eventsSignature = "";
+    clearKey();
+    for (const id of ["message-text", "directory-search", "node-name", "auth-password", "auth-code"]) $(id).value = "";
+    for (const id of ["target-list", "message-records", "stage-list"]) $(id).replaceChildren();
+    for (const id of ["target-name", "target-kind", "target-id", "target-avatar", "target-reason", "target-availability", "session-name", "session-id", "session-remote", "session-started", "session-stage", "backend-error", "session-notice", "key-notice", "received-notice"]) $(id).textContent = "";
+    $("target-name").textContent = "选择一位联系人";
+    $("target-kind").textContent = "新的沟通，从这里开始";
+    $("target-id").textContent = "或切换到已加入群";
+    $("target-avatar").textContent = "↗";
+    $("target-avatar").classList.toggle("group", false);
+    $("target-availability").textContent = "未选择目标";
+    $("target-reason").textContent = "请从左侧选择目标，再核对名称与 ID。";
+    $("contact-count").textContent = "0";
+    $("group-count").textContent = "0";
+    $("discovery-label").textContent = "局域网发现 · 0 人在线";
+    $("received-notice").hidden = true;
+    $("records-empty").hidden = false;
+    $("app-shell").hidden = true;
+    renderComposer();
   }
 
   function authControls(busy) {
@@ -332,19 +441,21 @@
     keyConfigured = status.api_key_configured;
     $("key-status").textContent = status.api_key_configured ? "API Key 已配置。" : "尚未配置 API Key。";
     $("key-revoke").disabled = !status.api_key_configured;
-    if (!authenticated) clearKey();
+    if (!authenticated) clearSensitive();
   }
 
   async function refreshAuth() {
+    const revision = authRevision;
     try {
       const response = await api("/auth/status");
+      if (revision !== authRevision) return;
       if (!response.ok) throw new Error();
       showAuth(response.data);
       $("auth-notice").textContent = "";
       if (authenticated) void refreshState();
     } catch {
-      authenticated = false;
-      clearKey();
+      if (revision !== authRevision) return;
+      clearSensitive();
       $("app-shell").hidden = true;
       $("auth-screen").hidden = false;
       $("auth-form").hidden = true;
@@ -379,8 +490,11 @@
     authControls(true);
     clearKey();
     $("key-notice").textContent = "";
+    if (action === "logout") showAuth({ initialized, authenticated: false, api_key_configured: keyConfigured });
+    const revision = authRevision;
     try {
       const response = await api(action === "logout" ? "/auth/logout" : "/auth/api-key", {}, action === "revoke" ? "DELETE" : "POST");
+      if (revision !== authRevision) return;
       if (!response.ok) throw new Error();
       if (action === "create") {
         keyConfigured = true;
@@ -391,12 +505,11 @@
         keyConfigured = false;
         $("key-status").textContent = "尚未配置 API Key。";
         $("key-notice").textContent = "API Key 已撤销。";
-      } else {
-        await refreshAuth();
       }
     } catch {
-      $("key-notice").textContent = "操作结果未确认，请刷新页面检查状态；未自动重试。";
-      if (action === "logout") await refreshAuth();
+      if (revision !== authRevision) return;
+      if (action === "logout") $("auth-notice").textContent = "退出结果未确认，请重新登录；未自动重试。";
+      else $("key-notice").textContent = "操作结果未确认，请刷新页面检查状态；未自动重试。";
     } finally {
       authControls(false);
     }
@@ -417,16 +530,12 @@
         const response = await api("/api/state");
         // 操作前发出的 GET 不得覆盖操作后的状态；操作期间的快照也不能解除发送限制。
         if (revision !== sessionRevision) return;
-        if (response.status === 401) {
-          authenticated = false;
-          $("app-shell").hidden = true;
-          clearKey();
-          void refreshAuth();
-          return;
-        }
         if (!response.ok) throw new Error(response.data.error || `HTTP ${response.status}`);
         const recovered = !reachable;
         state = response.data;
+        receiveSnapshot();
+        // 正文只保存在受预算限制的 received 中，不重复留在状态快照。
+        state.messages = [];
         reachable = true;
         if (!sessionPending.size) sessionStateUncertain = false;
         $("last-refresh").textContent = `${new Date().toLocaleTimeString("zh-CN", { hour12: false })} 更新`;
@@ -437,7 +546,9 @@
         renderComposer();
         renderEvents();
         applyAcknowledgements();
+        renderRecords();
       } catch (error) {
+        if (revision !== sessionRevision) return;
         reachable = false;
         sessionNotice(`无法读取后台状态：${error.message}。仅自动重试状态读取，不重发任何操作。`, true);
         $("phase-badge").dataset.phase = "failed";
@@ -450,6 +561,7 @@
       } finally {
         refreshPending = null;
         $("refresh-button").disabled = false;
+        if (revision !== sessionRevision && authenticated) void refreshState();
       }
     })();
     return refreshPending;
@@ -464,9 +576,11 @@
     renderSession();
     renderComposer();
     const label = action === "start" ? "上线" : "下线";
+    const revision = authRevision;
     sessionNotice(`已提交${label}请求，请等待后台状态更新。`);
     try {
       const response = await api(`/api/session/${action}`, payload);
+      if (revision !== authRevision) return;
       if (!response.ok || response.data.error) throw new Error(response.data.error || `HTTP ${response.status}`);
       if (action === "start") {
         state.name = response.data.name;
@@ -474,8 +588,10 @@
       }
       sessionNotice(`${label}请求已返回，以后台当前状态为准。`);
     } catch (error) {
+      if (revision !== authRevision) return;
       sessionNotice(`${label}请求未确认：${error.message}。未自动重试，请刷新状态确认。`, true);
     } finally {
+      if (revision !== authRevision) return;
       sessionPending.delete(action);
       sessionStateUncertain = true;
       sessionRevision += 1;
@@ -493,9 +609,11 @@
     const target = { ...selected, name: targetData().name };
     const text = $("message-text").value;
     const requestID = allocateID();
-    const record = { target, text, requestID, key: keyOf(target), session: sessionKey(state), at: new Date(), pending: true, error: "", result: null };
+    const record = { target, text, requestID, key: keyOf(target), session: sessionKey(state), at: new Date(), order: ++recordOrder, pending: true, error: "", result: null };
+    const revision = authRevision;
     activeSend = record;
     records.push(record);
+    trimRecords();
     warnings.delete(record.key);
     renderComposer();
     renderRecords();
@@ -503,14 +621,18 @@
     payload[target.kind === "group" ? "group_id" : "user_id"] = target.id;
     try {
       const response = await api(`/api/messages/${target.kind}`, payload);
+      if (revision !== authRevision) return;
       record.result = response.data.result || null;
       if (!response.ok || response.data.error) record.error = response.data.error || `HTTP ${response.status}`;
       if (!record.result && !record.error) record.error = "后台未返回发送结果。";
     } catch (error) {
+      if (revision !== authRevision) return;
       record.error = `请求未确认：${error.message}。此请求未自动重发。`;
     } finally {
+      if (revision !== authRevision) return;
       record.pending = false;
       activeSend = null;
+      trimRecords();
       const confirmed = onlineTransmissionConfirmed(record);
       if (confirmed) {
         // 只清除本次已确认的原始草稿，不碰其他目标或随后编辑的新正文。

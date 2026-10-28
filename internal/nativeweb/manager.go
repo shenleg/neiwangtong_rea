@@ -35,18 +35,21 @@ type GroupView struct {
 
 // State 返回后台状态及列表的独立副本；群列表仅含本次正常同步的群，不保证穷尽。
 type State struct {
-	Phase         string                    `json:"phase"`
-	Name          string                    `json:"name"`
-	OwnUserID     string                    `json:"own_user_id"`
-	Remote        string                    `json:"remote"`
-	DiscoveryMode string                    `json:"discovery_mode"`
-	StartedAt     *time.Time                `json:"started_at"`
-	Error         string                    `json:"error"`
-	Stage         string                    `json:"stage"`
-	Contacts      []ContactView             `json:"contacts"`
-	Groups        []GroupView               `json:"groups"`
-	Events        []nativeproto.ClientEvent `json:"events"`
-	MaxTextBytes  int                       `json:"max_text_bytes"`
+	Phase           string                    `json:"phase"`
+	Name            string                    `json:"name"`
+	OwnUserID       string                    `json:"own_user_id"`
+	Remote          string                    `json:"remote"`
+	DiscoveryMode   string                    `json:"discovery_mode"`
+	StartedAt       *time.Time                `json:"started_at"`
+	Error           string                    `json:"error"`
+	Stage           string                    `json:"stage"`
+	Contacts        []ContactView             `json:"contacts"`
+	Groups          []GroupView               `json:"groups"`
+	Events          []nativeproto.ClientEvent `json:"events"`
+	MaxTextBytes    int                       `json:"max_text_bytes"`
+	Messages        []ReceivedMessage         `json:"messages"`
+	ReceivedTotal   uint64                    `json:"received_total"`
+	ReceivedDropped uint64                    `json:"received_dropped"`
 }
 
 // MessageResponse 保留一次网页请求的协议提交事实；Error非空时也不能丢弃已经分配的MessageID或Submitted。
@@ -74,19 +77,23 @@ type running struct {
 	ops    map[string]*operation
 }
 
-// Manager 拥有一个后台会话；构造不联网，上线必须显式Start，失败不会自动重连或补发。
+// Manager 拥有一个后台会话；显式Start才上线，Host可恢复单个连接，但不会自动补发聊天或重启已停止的后台。
 type Manager struct {
-	mu      sync.Mutex
-	config  Config
-	factory sessionFactory
-	phase   string
-	stage   string
-	lastErr string
-	started *time.Time
-	saved   nativeproto.ClientSnapshot
-	events  []nativeproto.ClientEvent
-	current *running
-	closed  bool
+	mu              sync.Mutex
+	config          Config
+	factory         sessionFactory
+	phase           string
+	stage           string
+	lastErr         string
+	started         *time.Time
+	saved           nativeproto.ClientSnapshot
+	events          []nativeproto.ClientEvent
+	current         *running
+	closed          bool
+	messages        []ReceivedMessage
+	receivedBytes   int
+	receivedTotal   uint64
+	receivedDropped uint64
 }
 
 // New 验证config并只读加载自己的身份与最近联系人；返回离线管理器，配置或已有文件损坏时返回错误。
@@ -150,13 +157,16 @@ func (m *Manager) Start(name string) error {
 	m.config = config
 	m.current, m.started, m.phase, m.stage, m.lastErr = run, &now, "starting", "starting", ""
 	m.events = nil
+	m.messages, m.receivedBytes, m.receivedTotal, m.receivedDropped = nil, 0, 0, 0
 	m.saved.Groups = nil // 新会话必须重新同步，不能拿历史成员向变化后的群发送。
 	go m.run(ctx, runID, run, config)
 	return nil
 }
 
 func (m *Manager) run(ctx context.Context, runID string, run *running, config Config) {
-	client, runErr := m.factory(config, runID, run.log)
+	client, runErr := m.factory(config, runID, run.log, func(message nativeproto.IncomingMessage) error {
+		return m.receive(run, message)
+	})
 	var result nativeproto.ClientResult
 	if runErr == nil {
 		m.mu.Lock()
@@ -203,6 +213,9 @@ func (m *Manager) run(ctx context.Context, runID string, run *running, config Co
 		m.phase, m.lastErr = "failed", runErr.Error()
 	}
 	m.current = nil
+	if m.closed {
+		m.messages, m.receivedBytes = nil, 0
+	}
 	close(run.done)
 	m.mu.Unlock()
 }
@@ -225,6 +238,8 @@ func (m *Manager) Close(ctx context.Context) error {
 	if run != nil {
 		m.phase = "stopping"
 		run.cancel()
+	} else {
+		m.messages, m.receivedBytes = nil, 0
 	}
 	m.mu.Unlock()
 	if run == nil {
@@ -254,7 +269,8 @@ func (m *Manager) State() State {
 	online := m.phase == "online" && snapshot.Online
 	state := State{Phase: m.phase, Name: m.config.Name, OwnUserID: snapshot.OwnUserID, Remote: m.config.Prefix.Masked().String(),
 		DiscoveryMode: "subnet", Error: m.lastErr, Stage: m.stage, MaxTextBytes: nativeproto.MaxTextBytes,
-		Contacts: []ContactView{}, Groups: []GroupView{}, Events: append([]nativeproto.ClientEvent{}, m.events...)}
+		Contacts: []ContactView{}, Groups: []GroupView{}, Events: append([]nativeproto.ClientEvent{}, m.events...),
+		Messages: append([]ReceivedMessage{}, m.messages...), ReceivedTotal: m.receivedTotal, ReceivedDropped: m.receivedDropped}
 	for i := range state.Events {
 		if value := state.Events[i].MessageVersions; value != nil {
 			copy := *value
