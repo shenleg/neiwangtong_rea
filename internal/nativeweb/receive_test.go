@@ -26,7 +26,7 @@ func incomingCallback(t *testing.T, fake *fakeSession) func(nativeproto.Incoming
 	return fake.receive
 }
 
-// TestReceivedMessagesArePrivateAndEphemeral 验证两种消息可经认证读取，运行日志不含正文，重新上线不恢复旧消息。
+// TestReceivedMessagesArePrivateAndEphemeral 验证两种消息可经认证读取且不落盘，重新上线保留正文但拒绝旧会话回调。
 func TestReceivedMessagesArePrivateAndEphemeral(t *testing.T) {
 	manager, fake := testManager(t)
 	handler := testHandler(t, manager)
@@ -90,10 +90,10 @@ func TestReceivedMessagesArePrivateAndEphemeral(t *testing.T) {
 		t.Fatal(err)
 	}
 	state = awaitPhase(t, manager, "online")
-	if len(state.Messages) != 0 || state.ReceivedTotal != 0 || state.ReceivedDropped != 0 {
-		t.Fatal("新会话保留了旧接收内容")
+	if len(state.Messages) != 2 || state.ReceivedTotal != 2 || state.ReceivedDropped != 0 {
+		t.Fatal("重新上线不应丢失本进程内接收内容")
 	}
-	if err := receive(messages[0]); err == nil || len(manager.State().Messages) != 0 {
+	if err := receive(messages[0]); err == nil || len(manager.State().Messages) != 2 {
 		t.Fatal("旧会话回调污染了新会话")
 	}
 }

@@ -3,28 +3,32 @@ package nativeproto
 
 import (
 	"fmt"
+	"slices"
 	"sort"
+	"time"
 )
 
 // ClientSnapshot 是当前连接和本身份目录、完整群成员的值快照；Contacts不代表在线，Groups不保证穷尽所有群。
 // OnlineUserIDs仅包含双向READY且尚未停止的对端；单Client在线时恰有一个ID，PeerUserID保留单对端兼容语义。
 type ClientSnapshot struct {
-	OwnUserID          string      `json:"own_user_id"`
-	Online             bool        `json:"online"`
-	PeerUserID         string      `json:"peer_user_id"`
-	OnlineUserIDs      []string    `json:"online_user_ids"`
-	GroupTextSupported bool        `json:"group_text_supported"` // 当前已就绪连接已协商可发送纯文本群消息。
-	Contacts           []Contact   `json:"contacts"`
-	Groups             []GroupInfo `json:"groups"`
+	OwnUserID          string         `json:"own_user_id"`
+	Online             bool           `json:"online"`
+	PeerUserID         string         `json:"peer_user_id"`
+	OnlineUserIDs      []string       `json:"online_user_ids"`
+	GroupTextSupported bool           `json:"group_text_supported"` // 当前已就绪连接已协商可发送纯文本群消息。
+	Contacts           []Contact      `json:"contacts"`
+	Groups             []GroupInfo    `json:"groups"`
+	Typing             []TypingStatus `json:"typing"`
 }
 
-// Snapshot 返回并发安全的深拷贝，包括在线ID、联系人、群切片及各群成员；调用方修改返回值不会影响后续读取。
+// Snapshot 返回并发安全的深拷贝，包括在线ID、联系人、群成员和未过期输入状态；调用方修改返回值不会影响后续读取。
 // 无外部I/O或错误；启动目录立即可见，但只有完成双向READY且尚未停止的连接才标为在线。
 func (c *Client) Snapshot() ClientSnapshot {
 	snapshot := *c.snapshot.Load()
 	snapshot.OnlineUserIDs = append([]string(nil), snapshot.OnlineUserIDs...)
 	snapshot.Contacts = append([]Contact(nil), snapshot.Contacts...)
 	snapshot.Groups = append([]GroupInfo(nil), snapshot.Groups...)
+	snapshot.Typing = slices.DeleteFunc(append([]TypingStatus(nil), snapshot.Typing...), func(status TypingStatus) bool { return !status.Until.After(time.Now()) })
 	for i := range snapshot.Groups {
 		snapshot.Groups[i].Members = append([]string(nil), snapshot.Groups[i].Members...)
 	}
@@ -42,6 +46,9 @@ func (c *Client) publishSnapshot() {
 		snapshot.PeerUserID = c.remoteNode.UserID
 		snapshot.OnlineUserIDs = []string{c.remoteNode.UserID}
 		snapshot.GroupTextSupported = c.config.GroupChat && supportsTextContent(c.peer.groupMessageVersions[0])
+		if c.typingUntil.After(time.Now()) {
+			snapshot.Typing = []TypingStatus{{UserID: c.remoteNode.UserID, Until: c.typingUntil}}
+		}
 	}
 	for _, group := range c.groups {
 		group.Members = append([]string(nil), group.Members...)

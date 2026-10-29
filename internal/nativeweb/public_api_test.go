@@ -10,7 +10,9 @@ import (
 	"net/netip"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"neiwangtong-gateway/internal/nativeproto"
 )
@@ -24,6 +26,254 @@ func startPublicManager(t *testing.T) (*Manager, *fakeSession, http.Handler) {
 	}
 	awaitPhase(t, manager, "online")
 	return manager, fake, testHandler(t, manager)
+}
+
+// gatedRestartSession 在合成会话取消后等待测试释放，模拟旧会话清理；err模拟清理失败。
+type gatedRestartSession struct {
+	*fakeSession
+	stopping chan struct{}
+	release  chan struct{}
+	err      error
+}
+
+// Run 发布就绪事件并在取消后等待清理许可，返回预设清理错误，不访问网络。
+func (s *gatedRestartSession) Run(ctx context.Context, observe func(nativeproto.ClientEvent) error) (nativeproto.ClientResult, error) {
+	if err := observe(nativeproto.ClientEvent{Stage: "protocol_ready"}); err != nil {
+		return nativeproto.ClientResult{}, err
+	}
+	<-ctx.Done()
+	close(s.stopping)
+	<-s.release
+	return nativeproto.ClientResult{}, s.err
+}
+
+// gatedSendSession 模拟已提交但尚未完成的发送，释放后返回未知投递结果。
+type gatedSendSession struct {
+	*fakeSession
+	sending chan struct{}
+	release chan struct{}
+}
+
+// SendUser 等待测试释放发送，返回已提交但结果未知；不访问网络。
+func (s *gatedSendSession) SendUser(_ context.Context, _, _ string) (nativeproto.ChatResult, error) {
+	close(s.sending)
+	<-s.release
+	return nativeproto.ChatResult{Command: nativeproto.CommandUserMessage, MessageID: "synthetic", Submitted: true, Delivery: "unknown"}, errors.New("synthetic interrupted send")
+}
+
+// TestRestartWaitsForAcceptedSend 验证重新上线等待已受理发送的最终记录，不自动补发。
+func TestRestartWaitsForAcceptedSend(t *testing.T) {
+	manager, fake := testManager(t)
+	first := &gatedSendSession{fakeSession: fake, sending: make(chan struct{}), release: make(chan struct{})}
+	var starts atomic.Int32
+	manager.factory = func(_ Config, _ string, _ *journal, _ func(nativeproto.IncomingMessage) error) (session, error) {
+		if starts.Add(1) == 1 {
+			return first, nil
+		}
+		return fake, nil
+	}
+	if err := manager.Start(manager.State().Name); err != nil {
+		t.Fatal(err)
+	}
+	awaitPhase(t, manager, "online")
+	result := make(chan MessageResponse, 1)
+	go func() {
+		response, _ := manager.Send(context.Background(), "synthetic-request", nativeproto.ChatRequest{UserID: "synthetic-peer", Text: "synthetic"})
+		result <- response
+	}()
+	<-first.sending
+	if err := manager.Restart(); err != nil {
+		t.Fatal(err)
+	}
+	awaitPhase(t, manager, "stopping")
+	if starts.Load() != 1 {
+		t.Fatal("发送未完成时启动了新会话")
+	}
+	close(first.release)
+	response := <-result
+	if !response.Result.Submitted || response.Result.Delivery != "unknown" || response.Error == "" {
+		t.Fatalf("丢失发送事实: %+v", response)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if starts.Load() == 2 && manager.State().Phase == "online" {
+			if fake.calls.Load() != 0 {
+				t.Fatal("不应自动补发")
+			}
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("发送完成后未重新上线")
+}
+
+// TestPublicRestart 验证认证、输入、旧会话清理顺序、重复请求及新会话状态，不连接真实对端。
+func TestPublicRestart(t *testing.T) {
+	manager, fake := testManager(t)
+	first := &gatedRestartSession{fakeSession: fake, stopping: make(chan struct{}), release: make(chan struct{})}
+	var starts atomic.Int32
+	manager.factory = func(_ Config, _ string, _ *journal, _ func(nativeproto.IncomingMessage) error) (session, error) {
+		if starts.Add(1) == 1 {
+			return first, nil
+		}
+		return fake, nil
+	}
+	handler := testHandler(t, manager)
+	if response := authRequest(handler.(*authenticatedHandler).handler, "POST", "/session/restart", "{}", "", nil, ""); response.Code != http.StatusUnauthorized {
+		t.Fatalf("未认证请求: %d", response.Code)
+	}
+	for _, body := range []string{"", `{"name":"x"}`, `{} {}`, `null`} {
+		if response := performRequest(handler, http.MethodPost, "/session/restart", body); response.Code != http.StatusBadRequest {
+			t.Fatalf("非法请求 %q: %d", body, response.Code)
+		}
+	}
+	if starts.Load() != 0 {
+		t.Fatal("非法请求不应启动会话")
+	}
+	credentials := handler.(*authenticatedHandler)
+	keyResponse := authRequest(credentials.handler, "POST", "/auth/api-key", "{}", "http://127.0.0.1:8788", credentials.cookie, "")
+	var key map[string]string
+	if keyResponse.Code != http.StatusOK || json.Unmarshal(keyResponse.Body.Bytes(), &key) != nil {
+		t.Fatalf("生成API Key失败: %d %s", keyResponse.Code, keyResponse.Body.String())
+	}
+	if response := authRequest(credentials.handler, "POST", "/session/restart", `{}`, "", nil, "Bearer "+key["api_key"]); response.Code != http.StatusAccepted {
+		t.Fatalf("离线上线: %d %s", response.Code, response.Body.String())
+	}
+	original := awaitPhase(t, manager, "online")
+	manager.mu.Lock()
+	manager.messages = []ReceivedMessage{{}}
+	manager.receivedTotal = 1
+	manager.mu.Unlock()
+	if response := performRequest(handler, http.MethodPost, "/session/restart", `{}`); response.Code != http.StatusAccepted {
+		t.Fatalf("重新上线: %d %s", response.Code, response.Body.String())
+	}
+	<-first.stopping
+	if response := performRequest(handler, http.MethodPost, "/session/restart", `{}`); response.Code != http.StatusConflict || starts.Load() != 1 {
+		t.Fatalf("退出中必须拒绝重复请求: %d", response.Code)
+	}
+	close(first.release)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		state := manager.State()
+		if starts.Load() == 2 && state.Phase == "online" {
+			if state.Name != original.Name || state.StartedAt.Equal(*original.StartedAt) || len(state.Messages) != 1 || state.ReceivedTotal != 1 {
+				t.Fatalf("新会话状态错误: %+v", state)
+			}
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("新会话未上线")
+}
+
+// TestRestartCancellationAndCleanupFailure 验证显式下线或清理失败不会启动待执行的新会话。
+func TestRestartCancellationAndCleanupFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		stop bool
+		err  error
+	}{
+		{name: "stop", stop: true},
+		{name: "cleanup_failure", err: errors.New("synthetic cleanup error")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			manager, fake := testManager(t)
+			first := &gatedRestartSession{fakeSession: fake, stopping: make(chan struct{}), release: make(chan struct{}), err: tc.err}
+			var starts atomic.Int32
+			manager.factory = func(_ Config, _ string, _ *journal, _ func(nativeproto.IncomingMessage) error) (session, error) {
+				starts.Add(1)
+				return first, nil
+			}
+			if err := manager.Start(manager.State().Name); err != nil {
+				t.Fatal(err)
+			}
+			awaitPhase(t, manager, "online")
+			if err := manager.Restart(); err != nil {
+				t.Fatal(err)
+			}
+			<-first.stopping
+			if tc.stop {
+				manager.Stop()
+			}
+			close(first.release)
+			phase := "offline"
+			if tc.err != nil {
+				phase = "failed"
+			}
+			state := awaitPhase(t, manager, phase)
+			if starts.Load() != 1 || tc.err != nil && !strings.Contains(state.Error, tc.err.Error()) {
+				t.Fatalf("不应启动新会话: %d %+v", starts.Load(), state)
+			}
+		})
+	}
+}
+
+// TestRestartDuringStartupAndAfterFailure 验证启动期间重启不会提前打开第二个会话，失败后可显式重新上线。
+func TestRestartDuringStartupAndAfterFailure(t *testing.T) {
+	manager, fake := testManager(t)
+	opened := make(chan struct{})
+	release := make(chan struct{})
+	var starts atomic.Int32
+	manager.factory = func(_ Config, _ string, _ *journal, _ func(nativeproto.IncomingMessage) error) (session, error) {
+		switch starts.Add(1) {
+		case 1:
+			close(opened)
+			<-release
+			return nil, context.Canceled
+		case 2:
+			return nil, errors.New("synthetic start failure")
+		default:
+			return fake, nil
+		}
+	}
+	if err := manager.Start(manager.State().Name); err != nil {
+		t.Fatal(err)
+	}
+	<-opened
+	if err := manager.Restart(); err != nil || starts.Load() != 1 {
+		t.Fatalf("启动中重新上线: %v", err)
+	}
+	close(release)
+	state := awaitPhase(t, manager, "failed")
+	if starts.Load() != 2 || !strings.Contains(state.Error, "synthetic start failure") {
+		t.Fatalf("新会话启动错误未保留: %d %+v", starts.Load(), state)
+	}
+	if err := manager.Restart(); err != nil {
+		t.Fatal(err)
+	}
+	awaitPhase(t, manager, "online")
+	if starts.Load() != 3 {
+		t.Fatal("失败后未启动新会话")
+	}
+}
+
+// TestRestartCancelledByClose 验证程序关闭取消待执行的重新上线，即使等待旧会话超时也不会创建新会话。
+func TestRestartCancelledByClose(t *testing.T) {
+	manager, fake := testManager(t)
+	first := &gatedRestartSession{fakeSession: fake, stopping: make(chan struct{}), release: make(chan struct{})}
+	var starts atomic.Int32
+	manager.factory = func(_ Config, _ string, _ *journal, _ func(nativeproto.IncomingMessage) error) (session, error) {
+		starts.Add(1)
+		return first, nil
+	}
+	if err := manager.Start(manager.State().Name); err != nil {
+		t.Fatal(err)
+	}
+	awaitPhase(t, manager, "online")
+	if err := manager.Restart(); err != nil {
+		t.Fatal(err)
+	}
+	<-first.stopping
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := manager.Close(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("应报告等待取消: %v", err)
+	}
+	close(first.release)
+	awaitPhase(t, manager, "offline")
+	if starts.Load() != 1 || manager.Restart() == nil {
+		t.Fatal("关闭后不得重新上线")
+	}
 }
 
 // TestPublicHealthAndLists 验证健康状态按后台阶段返回200/503，列表使用原生快照且不冒充全网络名册。

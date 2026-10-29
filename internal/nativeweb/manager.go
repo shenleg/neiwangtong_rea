@@ -33,23 +33,33 @@ type GroupView struct {
 	Reason   string `json:"reason"`
 }
 
+// TypingView 是来自已握手联系人的输入通知剩余有效期；RemainingMS供浏览器按本地相对时间撤销提示。
+type TypingView struct {
+	UserID      string `json:"user_id"`
+	RemainingMS int64  `json:"remaining_ms"`
+}
+
 // State 返回后台状态及列表的独立副本；群列表仅含本次正常同步的群，不保证穷尽。
 type State struct {
-	Phase           string                    `json:"phase"`
-	Name            string                    `json:"name"`
-	OwnUserID       string                    `json:"own_user_id"`
-	Remote          string                    `json:"remote"`
-	DiscoveryMode   string                    `json:"discovery_mode"`
-	StartedAt       *time.Time                `json:"started_at"`
-	Error           string                    `json:"error"`
-	Stage           string                    `json:"stage"`
-	Contacts        []ContactView             `json:"contacts"`
-	Groups          []GroupView               `json:"groups"`
-	Events          []nativeproto.ClientEvent `json:"events"`
-	MaxTextBytes    int                       `json:"max_text_bytes"`
-	Messages        []ReceivedMessage         `json:"messages"`
-	ReceivedTotal   uint64                    `json:"received_total"`
-	ReceivedDropped uint64                    `json:"received_dropped"`
+	Phase               string                    `json:"phase"`
+	Name                string                    `json:"name"`
+	OwnUserID           string                    `json:"own_user_id"`
+	Remote              string                    `json:"remote"`
+	DiscoveryMode       string                    `json:"discovery_mode"`
+	StartedAt           *time.Time                `json:"started_at"`
+	HistoryID           string                    `json:"history_id"`
+	Typing              []TypingView              `json:"typing"`
+	Error               string                    `json:"error"`
+	Stage               string                    `json:"stage"`
+	Contacts            []ContactView             `json:"contacts"`
+	Groups              []GroupView               `json:"groups"`
+	RecentConversations []RecentConversation      `json:"recent_conversations"`
+	Events              []nativeproto.ClientEvent `json:"events"`
+	MaxTextBytes        int                       `json:"max_text_bytes"`
+	Messages            []ReceivedMessage         `json:"messages"`
+	SentMessages        []SentMessage             `json:"sent_messages"`
+	ReceivedTotal       uint64                    `json:"received_total"`
+	ReceivedDropped     uint64                    `json:"received_dropped"`
 }
 
 // MessageResponse 保留一次网页请求的协议提交事实；Error非空时也不能丢弃已经分配的MessageID或Submitted。
@@ -90,7 +100,12 @@ type Manager struct {
 	events          []nativeproto.ClientEvent
 	current         *running
 	closed          bool
+	restartPending  bool
+	recent          []RecentConversation
+	historyID       string
 	messages        []ReceivedMessage
+	sent            []*SentMessage
+	sentBytes       int
 	receivedBytes   int
 	receivedTotal   uint64
 	receivedDropped uint64
@@ -118,7 +133,7 @@ func New(config Config) (*Manager, error) {
 			return nil, fmt.Errorf("联系人快照存在但所属身份缺失: %v", err)
 		}
 	}
-	return &Manager{config: config, factory: openNative, phase: "offline", saved: snapshot}, nil
+	return &Manager{config: config, factory: openNative, phase: "offline", saved: snapshot, historyID: time.Now().UTC().Format(time.RFC3339Nano)}, nil
 }
 
 // Start 使用name作为本次显示名称启动协议会话；保留原身份和联系人，先独占Sync记录再创建socket。
@@ -127,6 +142,10 @@ func New(config Config) (*Manager, error) {
 func (m *Manager) Start(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.startLocked(name)
+}
+
+func (m *Manager) startLocked(name string) error {
 	if m.closed || m.current != nil {
 		return fmt.Errorf("后台会话正在运行、退出或程序已关闭")
 	}
@@ -157,7 +176,6 @@ func (m *Manager) Start(name string) error {
 	m.config = config
 	m.current, m.started, m.phase, m.stage, m.lastErr = run, &now, "starting", "starting", ""
 	m.events = nil
-	m.messages, m.receivedBytes, m.receivedTotal, m.receivedDropped = nil, 0, 0, 0
 	m.saved.Groups = nil // 新会话必须重新同步，不能拿历史成员向变化后的群发送。
 	go m.run(ctx, runID, run, config)
 	return nil
@@ -179,6 +197,7 @@ func (m *Manager) run(ctx context.Context, runID string, run *running, config Co
 			m.mu.Lock()
 			defer m.mu.Unlock()
 			m.stage = event.Stage
+			m.acknowledgeHistoryLocked(event)
 			if event.Stage == "protocol_ready" && m.phase == "starting" {
 				m.phase = "online"
 			}
@@ -214,16 +233,42 @@ func (m *Manager) run(ctx context.Context, runID string, run *running, config Co
 	}
 	m.current = nil
 	if m.closed {
-		m.messages, m.receivedBytes = nil, 0
+		m.clearHistoryLocked()
 	}
 	close(run.done)
+	if m.restartPending {
+		m.restartPending = false
+		if runErr == nil && !m.closed {
+			if err := m.startLocked(m.config.Name); err != nil {
+				m.phase, m.lastErr = "failed", err.Error()
+			}
+		}
+	}
 	m.mu.Unlock()
 }
 
-// Stop 请求当前会话正常下线，不等待网络清理；已经离线时无操作，无I/O错误返回。
+// Restart 沿用当前名称请求重新上线；运行中先正常下线并等待已受理发送及记录关闭，离线时直接启动。
+// 返回错误表示程序已关闭、正在退出或启动前的文件操作失败；受理不代表上线成功，清理失败时不启动新会话。
+func (m *Manager) Restart() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed || m.phase == "stopping" {
+		return fmt.Errorf("后台会话正在退出或程序已关闭")
+	}
+	if m.current == nil {
+		return m.startLocked(m.config.Name)
+	}
+	m.restartPending = true
+	m.phase = "stopping"
+	m.current.cancel()
+	return nil
+}
+
+// Stop 请求当前会话正常下线并取消待执行的重新上线，不等待网络清理；已经离线时无操作，无I/O错误返回。
 func (m *Manager) Stop() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.restartPending = false
 	if m.current != nil {
 		m.phase = "stopping"
 		m.current.cancel()
@@ -234,12 +279,13 @@ func (m *Manager) Stop() {
 func (m *Manager) Close(ctx context.Context) error {
 	m.mu.Lock()
 	m.closed = true
+	m.restartPending = false
 	run := m.current
 	if run != nil {
 		m.phase = "stopping"
 		run.cancel()
 	} else {
-		m.messages, m.receivedBytes = nil, 0
+		m.clearHistoryLocked()
 	}
 	m.mu.Unlock()
 	if run == nil {
@@ -268,9 +314,9 @@ func (m *Manager) State() State {
 	}
 	online := m.phase == "online" && snapshot.Online
 	state := State{Phase: m.phase, Name: m.config.Name, OwnUserID: snapshot.OwnUserID, Remote: m.config.Prefix.Masked().String(),
-		DiscoveryMode: "subnet", Error: m.lastErr, Stage: m.stage, MaxTextBytes: nativeproto.MaxTextBytes,
-		Contacts: []ContactView{}, Groups: []GroupView{}, Events: append([]nativeproto.ClientEvent{}, m.events...),
-		Messages: append([]ReceivedMessage{}, m.messages...), ReceivedTotal: m.receivedTotal, ReceivedDropped: m.receivedDropped}
+		DiscoveryMode: "subnet", HistoryID: m.historyID, Error: m.lastErr, Stage: m.stage, MaxTextBytes: nativeproto.MaxTextBytes,
+		Contacts: []ContactView{}, Groups: []GroupView{}, Typing: []TypingView{}, RecentConversations: m.recentSnapshotLocked(snapshot), Events: append([]nativeproto.ClientEvent{}, m.events...),
+		Messages: append([]ReceivedMessage{}, m.messages...), SentMessages: m.sentSnapshotLocked(), ReceivedTotal: m.receivedTotal, ReceivedDropped: m.receivedDropped}
 	for i := range state.Events {
 		if value := state.Events[i].MessageVersions; value != nil {
 			copy := *value
@@ -302,6 +348,14 @@ func (m *Manager) State() State {
 			reason = "后台尚未上线"
 		}
 		state.Groups = append(state.Groups, GroupView{GroupInfo: group, Sendable: reason == "", Reason: reason})
+	}
+	if online {
+		for _, status := range snapshot.Typing {
+			remaining := time.Until(status.Until).Milliseconds()
+			if remaining > 0 && slices.Contains(snapshot.OnlineUserIDs, status.UserID) {
+				state.Typing = append(state.Typing, TypingView{UserID: status.UserID, RemainingMS: remaining})
+			}
+		}
 	}
 	return state
 }
@@ -378,6 +432,7 @@ func (m *Manager) Send(ctx context.Context, requestID string, request nativeprot
 	}
 	op := &operation{hash: hash, done: make(chan struct{})}
 	run.ops[requestID] = op
+	history := m.recordSentLocked(request, response)
 	run.sends.Add(1)
 	m.mu.Unlock()
 	defer run.sends.Done()
@@ -405,12 +460,27 @@ func (m *Manager) Send(ctx context.Context, requestID string, request nativeprot
 		status = http.StatusInternalServerError
 		m.fail(run, err)
 	}
+	if response.Result.Submitted {
+		kind := "user"
+		if request.GroupID != "" {
+			kind = "group"
+		}
+		m.mu.Lock()
+		m.recordRecentLocked(kind, target, "", time.Now().UTC())
+		m.mu.Unlock()
+	}
 	response.Error = errorText(err)
 	if logErr := run.log.write(map[string]any{"event": "request_result", "response": response}); logErr != nil {
 		response.Error = errorText(errors.Join(err, logErr))
 		status = http.StatusInternalServerError
 		m.fail(run, logErr)
 	}
+	m.mu.Lock()
+	history.Response, history.Pending = response.clone(), false
+	for _, event := range m.events {
+		m.acknowledgeHistoryLocked(event)
+	}
+	m.mu.Unlock()
 	op.response, op.status = response, status
 	close(op.done)
 	return response.clone(), status

@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -206,6 +207,25 @@ func (a *authManager) limit() bool {
 	return true
 }
 
+func validSetupPassword(password string) bool {
+	length := utf8.RuneCountInString(password)
+	if length < 8 || length > 32 {
+		return false
+	}
+	var letter, digit, special bool
+	for _, c := range password {
+		switch {
+		case c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z':
+			letter = true
+		case c >= '0' && c <= '9':
+			digit = true
+		case c >= '!' && c <= '~':
+			special = true
+		}
+	}
+	return letter && digit && special
+}
+
 func (a *authManager) serve(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -243,11 +263,11 @@ func (a *authManager) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		password := fields["password"]
-		if len(password) < 8 || len(password) > 1024 {
-			writeError(w, 400, fmt.Errorf("密码长度必须为8到1024字节"))
-			return
-		}
 		if r.URL.Path == "/auth/setup" {
+			if !validSetupPassword(password) {
+				writeError(w, 400, fmt.Errorf("设置密码须为8到32个字符，包含英文字母、数字和ASCII特殊字符"))
+				return
+			}
 			if a.creds != nil {
 				writeError(w, 409, fmt.Errorf("已经初始化"))
 				return
@@ -283,6 +303,11 @@ func (a *authManager) serve(w http.ResponseWriter, r *http.Request) {
 			}
 			a.setup = ""
 		} else {
+			// 旧凭据可能不符合新设置规则，登录仍按原有字节范围校验。
+			if len(password) < 8 || len(password) > 1024 {
+				writeError(w, 400, fmt.Errorf("密码长度必须为8到1024字节"))
+				return
+			}
 			if a.creds == nil {
 				writeError(w, 401, fmt.Errorf("认证失败"))
 				return

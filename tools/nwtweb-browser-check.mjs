@@ -59,7 +59,7 @@ try {
       { group_id: "mixed-group", name: "合成在线离线群", members: ["synthetic-own", "synthetic-peer", "offline-peer"], sendable: true, reason: "" },
       { group_id: "offline-group", name: "合成全离线群", members: ["synthetic-own", "offline-peer", "missing-peer"], sendable: false, reason: "没有可用的READY群成员，不投递、不自动补发" },
     ],
-    events: [{ stage: "protocol_ready", elapsed_ms: 50 }], messages: [], received_total: 0, received_dropped: 0,
+    events: [{ stage: "protocol_ready", elapsed_ms: 50 }], messages: [], received_total: 0, received_dropped: 0, recent_conversations: [], sent_messages: [], history_id: "synthetic-history", typing: [],
   };
   const posts = [];
   let stateGets = 0;
@@ -291,7 +291,7 @@ async function checkSyntheticGroupResults() {
   let response;
   let authStatus = { initialized: false, authenticated: false, api_key_configured: false };
   const authRequests = [];
-  const context = { document, TextEncoder, AbortSignal, window: { crypto: webcrypto },
+  const context = { document, TextEncoder, AbortSignal, window: { crypto: webcrypto, setTimeout() {}, clearTimeout() {} },
     fetch: async (url, options) => {
       if (url.startsWith("/auth/")) {
         assert.equal(options.redirect, "error");
@@ -321,7 +321,7 @@ async function checkSyntheticGroupResults() {
           contacts: [{ user_id: "synthetic-peer", name: "合成联系人", online: mode !== "offline", sendable: mode !== "offline" },
             { user_id: mode === "ready" ? "third-peer" : "offline-peer", name: "合成群成员", online: mode === "ready", sendable: mode === "ready" }],
           groups: [{ group_id: "multi-group", name: "合成多成员群", members: ["synthetic-own", "synthetic-peer", mode === "ready" ? "third-peer" : "offline-peer"],
-            sendable: mode !== "offline", reason: mode === "offline" ? "没有可用的READY群成员" : "" }], events: [], messages: [], received_total: 0, received_dropped: 0 };
+            sendable: mode !== "offline", reason: mode === "offline" ? "没有可用的READY群成员" : "" }], events: [], messages: [], received_total: 0, received_dropped: 0, recent_conversations: [], sent_messages: [], history_id: "synthetic-history", typing: [] };
         reachable = true;
         selected = { kind: "group", id: "multi-group", name: "合成多成员群" };
         records.length = 0;
@@ -338,10 +338,17 @@ async function checkSyntheticGroupResults() {
   await fixture.refreshAuth();
   assert.equal(document.getElementById("auth-title").textContent, "首次初始化");
   assert.equal(document.getElementById("app-shell").hidden, true);
+  assert.equal(document.getElementById("auth-password-hint").hidden, false);
   document.getElementById("auth-code").value = "setup-code";
-  document.getElementById("auth-password").value = "setup-password";
+  for (const password of ["abc12!x", "abc12345", "abcdefg!", "1234567!", "abc1234 ", "abc1234！", "a1!" + "x".repeat(30)]) {
+    document.getElementById("auth-password").value = password;
+    await fixture.submitAuth({ preventDefault() {} });
+    assert.equal(authRequests.length, 0, `无效密码不得发送请求：${password}`);
+    assert.match(document.getElementById("auth-notice").textContent, /8～32/);
+  }
+  document.getElementById("auth-password").value = "a1!中文😀甲乙";
   await fixture.submitAuth({ preventDefault() {} });
-  assert.deepEqual(authRequests[0], { url: "/auth/setup", method: "POST", payload: { code: "setup-code", password: "setup-password" } });
+  assert.deepEqual(authRequests[0], { url: "/auth/setup", method: "POST", payload: { code: "setup-code", password: "a1!中文😀甲乙" } });
   assert.equal(document.getElementById("auth-password").value, "");
   assert.equal(document.getElementById("auth-code").value, "");
   assert.equal(document.getElementById("app-shell").hidden, false);
@@ -355,6 +362,7 @@ async function checkSyntheticGroupResults() {
   assert.equal(document.getElementById("key-revoke").disabled, true);
   await fixture.changeAuth("logout");
   assert.equal(document.getElementById("auth-title").textContent, "密码登录");
+  assert.equal(document.getElementById("auth-password-hint").hidden, true);
   assert.equal(document.getElementById("app-shell").hidden, true);
   document.getElementById("auth-password").value = "login-password";
   await fixture.submitAuth({ preventDefault() {} });
@@ -483,7 +491,7 @@ async function checkSyntheticReceivedMessages() {
     }
   }
   const elements = new Map();
-  const tabs = ["user", "group"].map((kind) => {
+  const tabs = ["user", "group", "recent"].map((kind) => {
     const tab = new Element("button");
     tab.dataset.kind = kind;
     tab.id = `tab-${kind}`;
@@ -509,7 +517,13 @@ async function checkSyntheticReceivedMessages() {
       { user_id: "bob", name: "Bob", discovery: "synthetic", online: true, sendable: true, reason: "" },
     ],
     groups: [{ group_id: "group", name: "测试群", members: ["own", "alice", "bob"], sendable: true, reason: "" }],
-    events: [], messages: [], received_total: 0, received_dropped: 0,
+    events: [], messages: [], received_total: 0, received_dropped: 0, recent_conversations: [], sent_messages: [], history_id: "synthetic-history", typing: [],
+  };
+  /** 模拟服务端仅保留最近目标资料；kind/id为已提交或已接收的目标，无I/O或异常。 */
+  const remember = (kind, id) => {
+    const item = kind === "user" ? snapshot.contacts.find((contact) => contact.user_id === id) : snapshot.groups.find((group) => group.group_id === id);
+    snapshot.recent_conversations = snapshot.recent_conversations.filter((entry) => entry.kind !== kind || entry.id !== id);
+    snapshot.recent_conversations.unshift({ kind, id, name: item.name, last_activity_at: new Date().toISOString() });
   };
   let stateStatus = 200;
   let pendingState;
@@ -518,12 +532,23 @@ async function checkSyntheticReceivedMessages() {
   const reply = (data, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => structuredClone(data) });
   const context = {
     document, TextEncoder, AbortSignal,
-    window: { crypto: webcrypto, setInterval() {} },
+    window: { crypto: webcrypto, setInterval() {}, setTimeout() {}, clearTimeout() {} },
     fetch: async (url, options) => {
       assert.equal(options.redirect, "error");
       if (url === "/auth/status") return reply(auth);
       if (url === "/auth/logout") { auth.authenticated = false; return reply({}); }
       if (url === "/auth/login") { auth.authenticated = true; return reply({}); }
+      if (url === "/api/messages/read") {
+        const payload = JSON.parse(options.body);
+        assert.equal(options.keepalive, true, "已读标记应在立即刷新页面时仍可提交");
+        assert.equal(payload.started_at, snapshot.started_at);
+        const sequence = Number(payload.sequence);
+        const message = snapshot.messages.find((item) => item.sequence === sequence);
+        if (message) for (const item of snapshot.messages) {
+          if (item.sequence <= sequence && item.command === message.command && item.group_id === message.group_id && (message.group_id || item.sender_id === message.sender_id)) item.read = true;
+        }
+        return reply({}, 204);
+      }
       if (url === "/api/state") {
         assert.equal(options.method, undefined, "状态只能通过 GET 读取");
         getCount++;
@@ -533,17 +558,24 @@ async function checkSyntheticReceivedMessages() {
       assert.equal(url, "/api/messages/user", "不允许其他网络请求");
       assert.equal(options.method, "POST");
       posts.push(JSON.parse(options.body));
-      return reply({ result: { command: 1004, message_id: "7", submitted: true, transport_acknowledged: false,
-        business_acknowledged: false, receipt_received: false, delivery: "unknown" }, error: "" });
+      remember("user", posts.at(-1).user_id);
+      const response = { request_id: posts.at(-1).request_id, result: { command: 1004, message_id: "7", submitted: true, transport_acknowledged: false,
+        business_acknowledged: false, receipt_received: false, delivery: "unknown" }, error: "" };
+      snapshot.sent_messages.push({ started_at: snapshot.started_at, sent_at: new Date().toISOString(), target_kind: "user",
+        target_id: "alice", target_name: "Alice", text: posts.at(-1).text, pending: false, response });
+      return reply(response);
     },
   };
   const source = await readFile(new URL("../internal/nativeweb/assets/app.js", import.meta.url), "utf8");
   const css = await readFile(new URL("../internal/nativeweb/assets/app.css", import.meta.url), "utf8");
   assert.match(css, /\.record-text\s*\{[^}]*white-space:\s*pre-wrap\s*;/, "消息样式必须保留换行");
+  assert.match(css, /\.message-record\s*\{[^}]*display:\s*flex\s*;/, "消息行应使用气泡布局");
+  assert.match(css, /\.message-record\.sent\s*\{[^}]*flex-direction:\s*row-reverse\s*;/, "己方气泡和头像应位于右侧");
+  assert.match(css, /\.message-record\.sent \.record-text\s*\{[^}]*background:\s*#95ec69\s*;/, "己方气泡使用微信风格绿色");
   const boundary = source.indexOf('  $("auth-form").addEventListener');
   assert.ok(boundary > 0, "必须运行真实页面的事件绑定和初始化");
-  runInNewContext(source.slice(0, boundary) + "  globalThis.fixture = { refreshState, refreshAuth, changeAuth, submitAuth };\n" + source.slice(boundary), context);
-  const { fixture } = context;
+  runInNewContext(source.slice(0, boundary) + "  globalThis.fixture = { refreshState, refreshAuth, changeAuth, submitAuth, expireTyping() { typingSnapshotAt -= 5001; renderDirectory(); renderTarget(); } };\n" + source.slice(boundary), context);
+  let { fixture } = context;
   await fixture.refreshAuth();
   await fixture.refreshState();
   const select = (kind, id) => {
@@ -555,13 +587,32 @@ async function checkSyntheticReceivedMessages() {
   const target = (id) => $("target-list").querySelectorAll("button").find((item) => item.dataset.key === id);
   const received = () => $("message-records").querySelectorAll(".message-record.received");
   const push = (sequence, command, sender, group, text, messageID = "7") => {
-    snapshot.messages.push({ sequence, received_at: `2026-10-25T00:00:${String(sequence).padStart(2, "0")}Z`, command,
+    snapshot.messages.push({ sequence, read: false, received_at: `2026-10-25T00:00:${String(sequence).padStart(2, "0")}Z`, command,
       message_id: messageID, sender_id: sender, sender_name: sender === "alice" ? "Alice" : "Bob", group_id: group, text });
     snapshot.received_total++;
+    remember(command === 3011 ? "group" : "user", command === 3011 ? group : sender);
   };
   const refresh = async () => { const before = getCount; await fixture.refreshState(); assert.ok(getCount > before, "必须执行状态 GET"); };
   const body = (item) => item.querySelectorAll(".record-text")[0].textContent;
+  /** 用相同服务端快照创建全新页面，模拟刷新；保留后台内存，读取或页面脚本出错时抛错。 */
+  const reload = async () => {
+    elements.clear();
+    document.activeElement = null;
+    for (const tab of tabs) { tab.listeners = {}; tab.attributes = {}; }
+    runInNewContext(source.slice(0, boundary) + "  globalThis.fixture = { refreshState, refreshAuth, changeAuth, submitAuth, expireTyping() { typingSnapshotAt -= 5001; renderDirectory(); renderTarget(); } };\n" + source.slice(boundary), context);
+    fixture = context.fixture;
+    await fixture.refreshAuth();
+    await fixture.refreshState();
+  };
 
+  tabs[0].dispatch("keydown", { key: "End" });
+  assert.equal(tabs[2].getAttribute("aria-selected"), "true", "End 应选择最近联系人标签");
+  tabs[2].dispatch("keydown", { key: "ArrowRight" });
+  assert.equal(tabs[0].getAttribute("aria-selected"), "true", "标签导航应从最近联系人循环至联系人");
+  tabs[0].dispatch("keydown", { key: "ArrowLeft" });
+  assert.equal(tabs[2].getAttribute("aria-selected"), "true");
+  tabs[2].dispatch("keydown", { key: "Home" });
+  assert.equal(tabs[0].getAttribute("aria-selected"), "true");
   select("user", "alice");
   $("message-text").value = "发送待确认";
   $("message-text").dispatch("input");
@@ -569,7 +620,12 @@ async function checkSyntheticReceivedMessages() {
   // 等待真实发送处理中的自动刷新完成。
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(posts.length, 1);
+  assert.equal($("message-records").querySelectorAll(".message-record.sent").length, 1);
+  assert.equal($("message-records").querySelectorAll(".record-avatar.own")[0].textContent, "我");
   assert.match($("message-records").textContent, /传输确认：未确认/);
+  tabs[2].dispatch("click");
+  assert.equal($("recent-count").textContent, "1", "发送提交后应进入最近联系人");
+  assert.ok(target("user:alice"));
   $("message-text").value = "Alice 草稿";
   $("message-text").dispatch("input");
   push(1, 1004, "alice", "", "单聊第一行\n<img src=x onerror=alert(1)>");
@@ -586,6 +642,12 @@ async function checkSyntheticReceivedMessages() {
   assert.match($("message-records").textContent, /业务 ACK：未确认 · 协议回执：未确认/, "同编号入站消息不得改变发送 ACK");
   assert.equal(target("user:bob").querySelectorAll(".unread-count")[0].textContent, "1");
   assert.match(target("user:bob").getAttribute("aria-label"), /1 条未读/);
+  assert.deepEqual($("target-list").querySelectorAll("button").map((item) => item.dataset.key), ["group:group", "user:bob", "user:alice"], "最近列表应包含收发单聊与群聊并按最近活动排序");
+  $("directory-search").value = "group";
+  $("directory-search").dispatch("input");
+  assert.equal($("target-list").querySelectorAll("button").length, 1, "最近列表支持名称和ID搜索");
+  $("directory-search").value = "";
+  $("directory-search").dispatch("input");
   await refresh();
   assert.equal(received().length, 1, "重复快照不得重复显示");
   assert.equal(target("user:bob").querySelectorAll(".unread-count")[0].textContent, "1", "重复快照不得重复计未读");
@@ -601,6 +663,8 @@ async function checkSyntheticReceivedMessages() {
   assert.deepEqual(received().map(body), ["Alice 群消息同编号", "Bob 群消息同编号"]);
   assert.match(received()[0].textContent, /Alice/);
   assert.match(received()[1].textContent, /Bob/);
+  assert.equal(received()[0].querySelectorAll(".record-avatar")[0].textContent, "A");
+  assert.equal(received()[1].querySelectorAll(".record-avatar")[0].textContent, "B");
   assert.equal(target("group:group").querySelectorAll(".unread-count").length, 0);
   select("user", "alice");
   assert.equal($("message-text").value, "Alice 草稿");
@@ -655,6 +719,73 @@ async function checkSyntheticReceivedMessages() {
   await fixture.refreshState();
   select("user", "alice");
   assert.doesNotMatch($("message-records").textContent, /401 前消息/, "重新登录空快照不得恢复 401 前正文");
+  snapshot.typing = [{ user_id: "bob", remaining_ms: 5000 }];
+  await refresh();
+  assert.equal($("typing-indicator").hidden, true, "其他联系人的输入通知不得显示在当前单聊");
+  select("user", "bob");
+  assert.equal($("typing-indicator").hidden, false, "对应联系人的原生通知应显示正在输入");
+  assert.match(target("user:bob").textContent, /正在输入/);
+  snapshot.typing = [{ user_id: "alice", remaining_ms: 5000 }];
+  await refresh();
+  assert.equal($("typing-indicator").hidden, true, "输入通知改为另一联系人时不能保留旧提示");
+  assert.doesNotMatch(target("user:bob").textContent, /正在输入/);
+  assert.match(target("user:alice").textContent, /正在输入/);
+  snapshot.typing = [{ user_id: "bob", remaining_ms: 5000 }];
+  await refresh();
+  select("group", "group");
+  assert.equal($("typing-indicator").hidden, true, "群聊不得显示单聊输入通知");
+  select("user", "bob");
+  fixture.expireTyping();
+  assert.equal($("typing-indicator").hidden, true, "五秒后即使未轮询也应撤销提示");
+  assert.doesNotMatch(target("user:bob").textContent, /正在输入/);
+  snapshot.typing = [];
+  select("user", "alice");
+  push(1, 1004, "bob", "", "刷新前查看的单聊");
+  push(2, 3011, "bob", "group", "尚未查看的群聊");
+  await refresh();
+  assert.equal(target("user:bob").querySelectorAll(".unread-count")[0].textContent, "1");
+  select("user", "bob");
+  assert.equal(target("user:bob").querySelectorAll(".unread-count").length, 0);
+  await new Promise((resolve) => setImmediate(resolve));
+  await reload();
+  assert.equal(target("user:bob").querySelectorAll(".unread-count").length, 0, "已查看的单聊刷新后不能重新出现未读提示");
+  tabs[1].dispatch("click");
+  assert.equal(target("group:group").querySelectorAll(".unread-count")[0].textContent, "1", "未查看的群消息刷新后仍应保留未读提示");
+  select("group", "group");
+  await new Promise((resolve) => setImmediate(resolve));
+  await reload();
+  tabs[1].dispatch("click");
+  assert.equal(target("group:group").querySelectorAll(".unread-count").length, 0, "已查看的群聊刷新后不能重新出现未读提示");
+  tabs[2].dispatch("click");
+  const recentKeys = $("target-list").querySelectorAll("button").map((item) => item.dataset.key);
+  assert.equal(recentKeys.length, 3, "重新上线或登录仍保留服务端最近联系人");
+  // 使用全新的页面状态重新执行真实脚本，验证列表不是靠浏览器内存或持久存储恢复。
+  elements.clear();
+  document.activeElement = null;
+  for (const tab of tabs) { tab.listeners = {}; tab.attributes = {}; }
+  runInNewContext(source.slice(0, boundary) + "  globalThis.fixture = { refreshState, refreshAuth, changeAuth, submitAuth, expireTyping() { typingSnapshotAt -= 5001; renderDirectory(); renderTarget(); } };\n" + source.slice(boundary), context);
+  fixture = context.fixture;
+  await fixture.refreshAuth();
+  await fixture.refreshState();
+  tabs[2].dispatch("click");
+  assert.deepEqual($("target-list").querySelectorAll("button").map((item) => item.dataset.key), recentKeys, "重新进入页面后应从服务端恢复最近列表");
+  select("user", "alice");
+  assert.equal($("message-records").querySelectorAll(".message-record.sent").length, 1, "刷新后应恢复已发正文且不重新发送");
+  assert.match($("message-records").textContent, /发送待确认/);
+  tabs[2].dispatch("click");
+  const oldGroups = snapshot.groups;
+  snapshot.groups = [];
+  await refresh();
+  assert.equal(target("group:group").getAttribute("aria-label"), "测试群，ID group，暂不可用", "暂未同步群仍保留最近记录但不得发送");
+  target("group:group").dispatch("click");
+  assert.equal($("send-button").disabled, true);
+  snapshot.groups = oldGroups;
+  snapshot = { ...snapshot, started_at: null, phase: "offline", messages: [], recent_conversations: [], sent_messages: [], history_id: "restarted-history" };
+  await refresh();
+  assert.equal($("target-list").querySelectorAll("button").length, 0, "服务重启后的空列表不得恢复旧目标");
+  assert.equal($("recent-count").textContent, "0");
+  select("user", "alice");
+  assert.equal($("message-records").querySelectorAll(".message-record").length, 0, "服务进程重启后收发正文应全部清空");
   assert.equal(posts.length, 1, "状态刷新和接收不得触发发送");
-  console.log(JSON.stringify({ checks: ["GET 接收单聊及多发送者群聊，同编号隔离与重复轮询去重", "未读与清除、目标和草稿保持、换行及 HTML 文本安全", "丢弃提示、新后台会话、退出/401 清理及旧 GET", "入站消息不更改发送 ACK、不自动发送"], stateGets: getCount, network: "无socket，仅合成DOM/fetch" }, null, 2));
+  console.log(JSON.stringify({ checks: ["GET 接收单聊及多发送者群聊，同编号隔离与重复轮询去重", "微信风格左右气泡、己方与群成员头像", "最近联系人收发排序、去重、搜索、三个标签键盘导航", "重新进入页面和登录保留最近列表，服务重启清空，暂未同步目标禁发", "未读与清除、目标和草稿保持、换行及 HTML 文本安全", "丢弃提示、新后台会话、退出/401 清理及旧 GET", "对方输入通知按联系人区分，群聊不显示、五秒后本地撤销", "已读单聊和群聊刷新不恢复未读，未查看及新消息仍未读", "已发全文刷新恢复、不重复提交，进程重启清空", "入站消息不更改发送 ACK、不自动发送"], stateGets: getCount, network: "无socket，仅合成DOM/fetch" }, null, 2));
 }

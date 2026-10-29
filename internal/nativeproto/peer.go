@@ -193,11 +193,15 @@ func (p *Peer) observeFrame(outbound bool, frame Frame) error {
 		} else {
 			p.status.RemoteReady = true
 		}
-	case CommandUserMessage, CommandGroupMessage, CommandMessageAck, CommandMessageReceipt, CommandHeartbeat, CommandQuit, CommandGroupInfoPush, CommandGroupUserPush, CommandGroupInfoRequest, CommandGroupInfoResponse, CommandGroupUserRequest, CommandGroupUserResponse:
+	case CommandTyping, CommandUserMessage, CommandGroupMessage, CommandMessageAck, CommandMessageReceipt, CommandHeartbeat, CommandQuit, CommandGroupInfoPush, CommandGroupUserPush, CommandGroupInfoRequest, CommandGroupInfoResponse, CommandGroupUserRequest, CommandGroupUserResponse:
 		if p.status.State != PeerOnline && p.status.State != PeerClosing {
 			return fmt.Errorf("命令 %d 前双向 READY 尚未齐全", frame.Command)
 		}
 		switch frame.Command {
+		case CommandTyping:
+			if err := DecodeTyping(frame); err != nil {
+				return err
+			}
 		case CommandUserMessage:
 			if _, err := DecodeUserMessage(frame); err != nil {
 				return err

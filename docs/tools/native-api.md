@@ -2,7 +2,7 @@
 
 本文说明 `cmd/nwtweb` 的公开调用接口。接口参考开发时更新后的远端 `main`：`c4a88cc` 的 `internal/api/api.go`，保留 `/health`、`/contacts`、`/groups`、`/send/user`、`/send/group` 和精确名称解析方式，底层使用已有原生协议后台，不调用 Windows IPC。
 
-**网页使用管理员密码登录，程序调用使用 API Key**。密码长度为8至1024个UTF-8字节，登录会话有效期为24小时，服务重启后需要重新登录。首次启动后，从服务端启动输出取得一次性初始化码，在网页设置管理员密码；Compose部署可通过 `docker compose logs` 查看启动输出，日志包含初始化码，应限制读取权限。登录后在网页生成API Key，完整密钥只在生成时展示一次；程序请求携带 `Authorization: Bearer <API Key>`，密钥可在网页撤销或重新生成。JSON 写入请求仍须使用 `Content-Type: application/json`。认证资料保存在数据目录；保留已有资料目录以维持身份及认证配置。HTTP不加密，密码、会话及密钥可能被同网段监听者截获。
+**网页使用管理员密码登录，程序调用使用 API Key**。首次设置密码须为8至32个Unicode字符，包含ASCII英文字母、数字及ASCII特殊字符（如 `!`、`@`、`#`），其他字符也可使用；旧密码仍可登录。登录会话有效期为24小时，服务重启后需要重新登录。首次启动后，从服务端启动输出取得一次性初始化码，在网页设置管理员密码；Compose部署可通过 `docker compose logs` 查看启动输出，日志包含初始化码，应限制读取权限。登录后在网页生成API Key，完整密钥只在生成时展示一次；程序请求携带 `Authorization: Bearer <API Key>`，密钥可在网页撤销或重新生成。JSON 写入请求仍须使用 `Content-Type: application/json`。认证资料保存在数据目录；保留已有资料目录以维持身份及认证配置。HTTP不加密，密码、会话及密钥可能被同网段监听者截获。
 
 忘记密码或需要更改密码时，可在停止服务后通过备份并移出认证文件重新初始化；这会使旧 API Key 失效，具体步骤见[重置管理员密码](nwtweb.md#重置管理员密码)。
 
@@ -87,6 +87,14 @@ curl --get --data-urlencode 'name=合成联系人' \
 - 未命中：404，`{"status":"not_found","error":"指定目标未命中"}`。
 - 多个同名：409，`{"status":"ambiguous","error":"...","candidates":[全部同名对象]}`，调用方需明确使用原始ID。
 - 省略或空 `name` 返回列表，与远端main一致；重复名称参数或错误查询编码返回400。
+
+### `POST /session/restart`
+
+使用 API Key 和 `Content-Type: application/json`，请求体必须为 `{}`。该接口明确发起子网连接，实际使用前须另行取得连接授权。
+
+- 离线或失败时，沿用当前名称、独立身份和配置启动新会话；在线或启动中先请求正常下线，等待已受理发送保存结果及旧记录关闭后再启动。
+- 返回 `202` 和当前后台状态仅表示受理，并不保证已上线；通过 `GET /health` 查询阶段及错误。退出中、重复重新上线或管理器关闭返回 `409`；离线时启动前的记录创建失败也返回 `409`。旧会话清理失败时不启动新会话，状态为 `failed`，保留错误。
+- 显式下线或关闭管理器会取消尚未执行的重新上线。新会话重新同步群并重新开始会话内发送去重；临时收发正文和网页已读标记仍保留到进程退出；不自动重发或补发消息。旧发送可能已提交，不能因重新上线而重试。
 
 ## 4. 发送接口
 
@@ -208,10 +216,12 @@ curl http://127.0.0.1:8788/send/user \
 
 以下接口供登录后的网页使用：
 
-- `GET /api/state`：完整网页状态及本次后台会话的临时入站`messages`。每条含`sequence`、`received_at`、`command`、`message_id`、`sender_id`、`sender_name`、`group_id`、`text`；单聊`group_id`为空。`sequence`在当前后台会话内递增，用于重复轮询去重，不是协议消息编号。缓冲最近至多128条且正文合计至多1MiB；`received_total`为累计接收条数，`received_dropped`为超出预算后淘汰的旧消息数。正文不写入磁盘或运行日志；重新上线或进程退出后清空。此接口仍要求认证并返回`Cache-Control: no-store`。
+- `GET /api/state`：完整网页状态、服务端内存中的`recent_conversations`、本进程的临时入站`messages`和已发`sent_messages`。`history_id`在进程内稳定，用于识别服务重启并清除页面旧记录。最近会话每条含`kind`（`user`/`group`）、`id`、`name`、`last_activity_at`，合并实际提交的发送与已接受的接收，按最近活动倒序并按类型/ID去重；不含正文，重新打开页面、登录或重新上线保留，进程重启清空。群消息只更新所在群，重复查询发送结果不更新时间。每条含`sequence`、`received_at`、`command`、`message_id`、`sender_id`、`sender_name`、`group_id`、`text`；单聊`group_id`为空。`sequence`在当前进程内递增，用于重复轮询去重，不是协议消息编号，重新上线不重置。每条另有网页已展示标记`read`。收发共用最近128条、正文合计1MiB的内存预算；`received_total`为累计接收条数，`received_dropped`为超出预算后淘汰的旧消息数。正文不写入磁盘或运行日志；刷新、重新登录和重新上线后保留，进程退出后清空。已发记录包含`started_at`、`sent_at`、`target_kind`、`target_id`、`target_name`、`text`、`pending`及`response`；恢复待完成或结果未知的记录不会重发聊天。此接口仍要求认证并返回`Cache-Control: no-store`。
+- `GET /api/state`的`typing`：已就绪且在线联系人原生1008输入通知列表，每条含`user_id`和`remaining_ms`。剩余时长由服务端计算，浏览器按本地相对时间隐藏，避免两台设备时钟不同造成持续显示；最后通知后5秒撤销，重复通知重置。只显示单聊对方，不生成聊天记录、最近联系人或未读数，不主动发出输入通知。静态依据见[输入通知契约](../research/reports/native-protocol/typing-contract.md)。
 - `GET /api/contacts`、`GET /api/groups`：原网页列表形状。
 - `POST /api/session/start {"name":"自定义本机名称"}`：以所填显示名称上线；空对象 `{}` 沿用当前名称。只能在离线或上次失败后修改，在线/退出中返回409；空名、纯空白、控制字符或非法编码返回400，联网前拒绝，不静默使用旧名。只改显示名称，不更换独立身份或联系人；本进程记住新名称，重启后仍以 `-name` 配置为准。
 - `POST /api/session/stop {}`：明确请求正常下线。两者返回202表示已受理，不代表网络操作完成。
+- `POST /api/messages/read {"started_at":"当前会话started_at","sequence":"已显示消息的接收序号"}`：保存该目标截至此序号的网页已读标记，成功返回204，旧会话或未来序号返回409；不影响其他目标或更晚到达的消息，不发送协议已读回执。
 - `POST /api/messages/user {"request_id":"调用方标识","user_id":"...","text":"..."}`。
 - `POST /api/messages/group {"request_id":"调用方标识","group_id":"...","text":"..."}`。
 

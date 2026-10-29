@@ -23,6 +23,7 @@ func (h *Host) Snapshot() ClientSnapshot {
 		remote := peer.client.Snapshot()
 		if remote.Online && remote.PeerUserID == peer.node.UserID {
 			snapshot.OnlineUserIDs = append(snapshot.OnlineUserIDs, peer.node.UserID)
+			snapshot.Typing = append(snapshot.Typing, remote.Typing...)
 		}
 	}
 	sort.Strings(snapshot.OnlineUserIDs)

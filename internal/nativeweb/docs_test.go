@@ -33,9 +33,19 @@ func TestOpenAPIRoutesAndLocalReferences(t *testing.T) {
 		t.Fatal("Bearer 认证方案错误")
 	}
 	paths := document["paths"].(map[string]any)
-	for _, path := range []string{"/health", "/contacts", "/groups", "/send/user", "/send/group", "/api/state", "/api/contacts", "/api/groups", "/api/session/start", "/api/session/stop", "/api/messages/user", "/api/messages/group"} {
+	for _, path := range []string{"/health", "/contacts", "/groups", "/send/user", "/send/group", "/session/restart", "/api/state", "/api/contacts", "/api/groups", "/api/session/start", "/api/session/stop", "/api/messages/read", "/api/messages/user", "/api/messages/group"} {
 		if _, ok := paths[path]; !ok {
 			t.Errorf("缺少文档路径%s", path)
+		}
+	}
+	restart := paths["/session/restart"].(map[string]any)["post"].(map[string]any)
+	if restart["requestBody"].(map[string]any)["$ref"] != "#/components/requestBodies/EmptyObject" {
+		t.Fatal("重新上线必须声明空JSON对象请求")
+	}
+	responses := restart["responses"].(map[string]any)
+	for _, status := range []string{"202", "400", "403", "409", "415"} {
+		if _, ok := responses[status]; !ok {
+			t.Errorf("重新上线缺少状态码 %s", status)
 		}
 	}
 	schemas := components["schemas"].(map[string]any)
@@ -52,7 +62,7 @@ func TestOpenAPIRoutesAndLocalReferences(t *testing.T) {
 	if !strings.Contains(remote["description"].(string), "子网 CIDR") {
 		t.Fatal("remote应说明发现子网CIDR，而非单对端地址")
 	}
-	for _, field := range []string{"messages", "received_total", "received_dropped"} {
+	for _, field := range []string{"messages", "received_total", "received_dropped", "recent_conversations", "sent_messages", "history_id", "typing"} {
 		if _, ok := stateProperties[field]; !ok {
 			t.Errorf("状态规范缺少临时接收字段: %s", field)
 		}

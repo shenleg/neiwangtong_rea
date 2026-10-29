@@ -1,4 +1,4 @@
-// 本文件管理同源认证、状态轮询、临时收发记录及每目标草稿；写请求只由用户明确操作触发，失败不自动重发。
+// 本文件管理认证、状态轮询、服务端临时收发记录、网页已读状态及草稿；聊天仅由用户明确提交，失败不自动重发。
 (() => {
   "use strict";
 
@@ -10,9 +10,14 @@
   const records = [];
   const received = [];
   const unread = new Map();
+  const readPending = new Set();
+  let readError = "";
+  let typingSnapshotAt = 0;
+  let typingTimer = null;
   const recordLimit = 128;
   const byteLimit = 1024 * 1024;
   const sessionPending = new Set();
+  let historyID = null;
   let receivedSession = null;
   let receivedCursor = 0;
   let authRevision = 0;
@@ -85,33 +90,56 @@
     return state ? Math.min(4096, state.max_text_bytes) : 4096;
   }
 
+  function typingRemaining(userID) {
+    const status = state.typing.find((item) => item.user_id === userID);
+    return status ? status.remaining_ms - (Date.now() - typingSnapshotAt) : 0;
+  }
+
+  function scheduleTypingExpiry() {
+    window.clearTimeout(typingTimer);
+    const remaining = state.typing.map((status) => typingRemaining(status.user_id)).filter((value) => value > 0);
+    if (!remaining.length) return;
+    // 越过到期毫秒再刷新，避免同一毫秒内剩余时间仍为正而重复排定定时器。
+    typingTimer = window.setTimeout(() => {
+      if (!state) return;
+      renderDirectory();
+      renderTarget();
+      scheduleTypingExpiry();
+    }, Math.min(...remaining) + 1);
+  }
+
   function renderDirectory() {
     if (!state) return;
     const search = $("directory-search").value.toLocaleLowerCase();
-    const signature = JSON.stringify([activeKind, search, selected, state.contacts, state.groups, Array.from(unread)]);
+    const signature = JSON.stringify([activeKind, search, selected, reachable, state.phase, state.contacts, state.groups, state.recent_conversations, state.typing.map((status) => [status.user_id, typingRemaining(status.user_id) > 0]), Array.from(unread)]);
     if (signature === directorySignature) return;
     directorySignature = signature;
     const focusedKey = $("target-list").contains(document.activeElement) ? document.activeElement.dataset.key : null;
     $("contact-count").textContent = state.contacts.length;
     $("group-count").textContent = state.groups.length;
-    const list = activeKind === "user" ? state.contacts : state.groups;
-    const visible = list.filter((item) => `${item.name}\n${activeKind === "user" ? item.user_id : item.group_id}`.toLocaleLowerCase().includes(search));
+    $("recent-count").textContent = state.recent_conversations.length;
+    const list = activeKind === "recent" ? state.recent_conversations : activeKind === "user"
+      ? state.contacts.map((item) => ({ kind: "user", id: item.user_id, name: item.name }))
+      : state.groups.map((item) => ({ kind: "group", id: item.group_id, name: item.name }));
+    const visible = list.filter((target) => `${target.name}\n${target.id}`.toLocaleLowerCase().includes(search));
     const fragment = document.createDocumentFragment();
-    for (const item of visible) {
-      const id = activeKind === "user" ? item.user_id : item.group_id;
-      const target = { kind: activeKind, id, name: item.name };
+    for (const target of visible) {
+      const { kind, id, name } = target;
+      const item = targetData(target);
+      const group = kind === "group";
       const button = node("button", "target-button");
       button.type = "button";
       button.dataset.key = keyOf(target);
       button.setAttribute("aria-pressed", String(Boolean(selected && keyOf(selected) === keyOf(target))));
-      const available = item.sendable && (activeKind === "group" || item.online);
-      const label = activeKind === "user" ? (item.online ? (item.sendable ? "在线" : "不可发送") : "离线") : (item.sendable ? "可发送" : "不可发送");
+      const available = Boolean(item && item.sendable && (group || item.online));
+      const typing = reachable && state.phase === "online" && typingRemaining(id) > 0;
+      const label = !item ? "暂不可用" : group ? (item.sendable ? "可发送" : "不可发送") : (item.online ? (typing ? "正在输入…" : item.sendable ? "在线" : "不可发送") : "离线");
       const count = unread.get(keyOf(target)) || 0;
-      button.setAttribute("aria-label", `${item.name}，ID ${id}，${label}${count ? `，${count} 条未读` : ""}`);
-      const avatar = node("span", `target-avatar${activeKind === "group" ? " group" : ""}`, activeKind === "group" ? "群" : Array.from(item.name)[0] || "人");
+      button.setAttribute("aria-label", `${name}，ID ${id}，${label}${count ? `，${count} 条未读` : ""}`);
+      const avatar = node("span", `target-avatar${group ? " group" : ""}`, group ? "群" : Array.from(name)[0] || "人");
       avatar.setAttribute("aria-hidden", "true");
       const info = node("span", "target-info");
-      info.append(node("strong", "", item.name), node("small", "mono", id));
+      info.append(node("strong", "", name), node("small", "mono", activeKind === "recent" ? `${group ? "群聊" : "单聊"} · ${id}` : id));
       button.append(avatar, info, node("span", `target-state${available ? " available" : ""}`, label));
       if (count) button.append(node("span", "unread-count", String(count)));
       button.addEventListener("click", () => selectTarget(target));
@@ -121,8 +149,8 @@
     }
     $("target-list").replaceChildren(fragment);
     $("directory-empty").hidden = visible.length > 0;
-    $("directory-empty").textContent = search ? "没有匹配的名称或 ID" : (activeKind === "group" ? "尚无已同步的已加入群" : "联系人列表为空");
-    $("directory-note").textContent = activeKind === "group" ? "仅列出已同步的已加入群，并非全部群。" : "离线联系人仍可浏览，暂不可发送。";
+    $("directory-empty").textContent = search ? "没有匹配的名称或 ID" : activeKind === "recent" ? "还没有收发过消息" : (activeKind === "group" ? "尚无已同步的已加入群" : "联系人列表为空");
+    $("directory-note").textContent = activeKind === "recent" ? "按最近收发排序；重新打开页面保留，服务重启清空。" : activeKind === "group" ? "仅列出已同步的已加入群，并非全部群。" : "离线联系人仍可浏览，暂不可发送。";
     if (focusedKey) {
       const button = Array.from($("target-list").querySelectorAll("button")).find((element) => element.dataset.key === focusedKey);
       if (button) button.focus({ preventScroll: true });
@@ -133,6 +161,7 @@
     selected = target;
     unread.delete(keyOf(target));
     for (const record of received) if (record.key === keyOf(target)) record.unread = false;
+    void saveRead(target);
     $("message-text").value = drafts.get(keyOf(target)) || "";
     renderDirectory();
     renderTarget();
@@ -145,6 +174,7 @@
     const item = targetData();
     const name = item ? item.name : selected.name;
     const group = selected.kind === "group";
+    $("typing-indicator").hidden = !(!group && item && item.online && reachable && state.phase === "online" && typingRemaining(selected.id) > 0);
     $("target-name").textContent = name;
     $("target-kind").textContent = group ? "已加入群 / GROUP" : "联系人 / CONTACT";
     $("target-id").textContent = `${group ? "Group ID" : "User ID"} · ${selected.id}`;
@@ -168,23 +198,24 @@
     const limit = textLimit();
     const warning = selected ? warnings.get(keyOf(selected)) : "";
     const reason = blockedReason();
+    const pending = activeSend || records.find((record) => record.pending);
     $("byte-count").textContent = `${bytes} / ${limit} 字节`;
     $("byte-count").classList.toggle("over-limit", bytes > limit);
     $("message-text").disabled = !selected;
     $("message-text").readOnly = Boolean(activeSend && selected && activeSend.key === keyOf(selected));
     $("message-text").setAttribute("aria-invalid", String(bytes > limit));
-    $("send-button").disabled = Boolean(reason || activeSend || !canAllocateID() || bytes === 0 || bytes > limit);
-    $("send-label").textContent = activeSend ? "正在提交…" : "发送消息";
-    $("composer").setAttribute("aria-busy", String(Boolean(activeSend)));
+    $("send-button").disabled = Boolean(reason || pending || !canAllocateID() || bytes === 0 || bytes > limit);
+    $("send-label").textContent = pending ? "正在提交…" : "发送消息";
+    $("composer").setAttribute("aria-busy", String(Boolean(pending)));
     const lastRecord = selected ? records.findLast((record) => record.key === keyOf(selected)) : null;
     let notice = reason || "仅提交一次；传输确认不代表送达或已读。";
     if (!reason && !text && lastRecord && onlineTransmissionConfirmed(lastRecord)) notice = confirmationSummary(lastRecord.result);
     if (!canAllocateID()) notice = "浏览器缺少 crypto.getRandomValues，无法生成安全请求 ID，请使用现代浏览器。";
-    else if (activeSend) notice = "正在提交固定目标与正文，请勿重复操作。";
+    else if (pending) notice = "后台仍在处理已受理的发送，请勿重复提交。";
     else if (warning) notice = warning;
     else if (bytes > limit) notice = `正文超过 ${limit} 字节，请缩短后发送。`;
     $("send-notice").textContent = notice;
-    $("send-notice").classList.toggle("warning", Boolean(warning && !activeSend) || bytes > limit || !canAllocateID());
+    $("send-notice").classList.toggle("warning", Boolean(warning && !pending) || bytes > limit || !canAllocateID());
   }
 
   function renderSession() {
@@ -256,7 +287,67 @@
     if (changed) renderRecords();
   }
 
-  // 后台序列只用于接收去重，与发送回执的 message_id 无关。
+  // 后台是收发记录的来源；按会话和请求标识合并，刷新不会重新提交聊天。
+  function restoreSentSnapshot() {
+    for (const message of state.sent_messages) {
+      const session = sessionKey({ ...state, started_at: message.started_at });
+      const existing = records.find((record) => record.requestID === message.response.request_id && record.session === session);
+      if (existing && !existing.pending) continue;
+      const value = { pending: message.pending, result: message.response.result, error: message.response.error };
+      if (existing) {
+        Object.assign(existing, value);
+        continue;
+      }
+      const target = { kind: message.target_kind, id: message.target_id, name: message.target_name };
+      records.push({ ...value, target, text: message.text, requestID: message.response.request_id, session,
+        key: keyOf(target), at: new Date(message.sent_at), order: ++recordOrder });
+    }
+  }
+
+  function renderReceivedNotice() {
+    const dropped = state && state.received_dropped ? `后台已丢弃 ${state.received_dropped} 条接收消息，较早消息可能不可见。` : "";
+    $("received-notice").textContent = [dropped, readError].filter(Boolean).join(" ");
+    $("received-notice").hidden = !dropped && !readError;
+  }
+
+  function rebuildUnread() {
+    unread.clear();
+    for (const record of received) {
+      record.unread = !record.read && (!selected || record.key !== keyOf(selected));
+      if (record.unread) unread.set(record.key, (unread.get(record.key) || 0) + 1);
+    }
+  }
+
+  // 只标记已经展示的序号，防止请求途中到达的新消息被误标；这是本地网页状态，不发协议回执。
+  async function saveRead(target = selected) {
+    if (!target || !state || document.visibilityState === "hidden") return;
+    const key = keyOf(target);
+    const message = received.findLast((record) => record.key === key && !record.read);
+    if (!message) return;
+    const session = receivedSession;
+    const requestKey = `${session}:${message.sequence}`;
+    if (readPending.has(requestKey)) return;
+    readPending.add(requestKey);
+    const revision = authRevision;
+    const startedAt = state.started_at;
+    try {
+      const response = await api("/api/messages/read", { started_at: startedAt, sequence: String(message.sequence) });
+      if (revision !== authRevision || session !== receivedSession) return;
+      if (!response.ok) throw new Error();
+      for (const record of received) if (record.key === key && record.sequence <= message.sequence) record.read = true;
+      readError = "";
+      rebuildUnread();
+      renderDirectory();
+    } catch {
+      if (revision !== authRevision || session !== receivedSession) return;
+      readError = "已读状态未保存，刷新后仍可能显示未读；请检查后台连接。";
+    } finally {
+      readPending.delete(requestKey);
+      if (revision === authRevision) renderReceivedNotice();
+    }
+  }
+
+  // 后台序列在进程内递增，只用于接收去重，与发送回执的 message_id 无关。
   function receiveSnapshot() {
     const current = sessionKey(state);
     if (receivedSession !== current) {
@@ -266,27 +357,31 @@
       receivedSession = current;
     }
     for (const message of state.messages) {
-      if (message.sequence <= receivedCursor) continue;
+      if (message.sequence <= receivedCursor) {
+        const previous = received.find((record) => record.sequence === message.sequence);
+        if (previous && message.read) previous.read = true;
+        continue;
+      }
       receivedCursor = message.sequence;
       const target = message.command === 3011 ? { kind: "group", id: message.group_id } : { kind: "user", id: message.sender_id };
       const key = keyOf(target);
-      const isUnread = !selected || keyOf(selected) !== key;
+      const isUnread = !message.read && (!selected || keyOf(selected) !== key);
       received.push({ ...message, key, unread: isUnread, order: ++recordOrder });
       if (isUnread) unread.set(key, (unread.get(key) || 0) + 1);
     }
     trimRecords();
-    $("received-notice").textContent = state.received_dropped ? `后台已丢弃 ${state.received_dropped} 条接收消息，较早消息可能不可见。` : "";
-    $("received-notice").hidden = !state.received_dropped;
+    rebuildUnread();
+    renderReceivedNotice();
   }
 
   // 两类记录共享数量和字节预算；淘汰未读消息时同步减少未读数。
   function trimRecords() {
     const size = () => encoder.encode(JSON.stringify([...records, ...received])).length;
     while (records.length + received.length > recordLimit || size() > byteLimit) {
-      const firstSend = records.find((record) => !record.pending);
+      const firstSend = records.filter((record) => !record.pending).reduce((first, record) => !first || record.at < first.at ? record : first, null);
       const firstReceive = received[0];
       if (!firstSend && !firstReceive) break;
-      if (firstReceive && (!firstSend || firstReceive.order < firstSend.order)) {
+      if (firstReceive && (!firstSend || new Date(firstReceive.received_at) <= firstSend.at)) {
         received.shift();
         if (firstReceive.unread) {
           const count = unread.get(firstReceive.key) - 1;
@@ -302,7 +397,7 @@
     const scroller = $("records-scroll");
     const nearBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 70;
     const openDetails = new Set(Array.from(list.querySelectorAll("details[open]")).map((detail) => detail.dataset.request));
-    const visible = selected ? [...records, ...received].filter((record) => record.key === keyOf(selected)).sort((a, b) => a.order - b.order) : [];
+    const visible = selected ? [...records, ...received].filter((record) => record.key === keyOf(selected)).sort((a, b) => new Date(a.received_at || a.at) - new Date(b.received_at || b.at) || a.order - b.order) : [];
     const fragment = document.createDocumentFragment();
     for (const record of visible) {
       if (record.sequence !== undefined) {
@@ -311,21 +406,28 @@
         const at = new Date(record.received_at);
         const time = node("time", "", at.toLocaleString("zh-CN", { hour12: false }));
         time.dateTime = record.received_at;
-        heading.append(node("strong", "", `收到 · ${record.sender_name}`), time);
-        item.append(heading, node("div", "record-text", record.text));
+        heading.append(node("strong", "", record.sender_name), time);
+        const avatar = node("span", "record-avatar", Array.from(record.sender_name)[0] || "人");
+        avatar.setAttribute("aria-hidden", "true");
+        const content = node("div", "record-content");
+        content.append(heading, node("div", "record-text", record.text));
+        item.append(avatar, content);
         fragment.append(item);
         continue;
       }
       const item = node("li", "message-record sent");
+      const avatar = node("span", "record-avatar own", "我");
+      avatar.setAttribute("aria-hidden", "true");
+      const content = node("div", "record-content");
       const heading = node("div", "record-heading");
       const time = node("time", "", record.at.toLocaleTimeString("zh-CN", { hour12: false }));
       time.dateTime = record.at.toISOString();
-      heading.append(node("strong", "", `发给 ${record.target.name}`), time);
+      heading.append(node("strong", "", "我"), time);
       const confirmed = onlineTransmissionConfirmed(record);
       const status = record.pending ? "正在提交 · 尚无确认" : (confirmed ? confirmationSummary(record.result) : "结果未知 · 送达状态未知");
-      item.append(heading, node("div", "record-text", record.text), node("p", `record-status ${record.pending ? "pending" : confirmed ? "" : "unknown"}`, status));
-      if (!record.pending && !confirmed) item.append(node("p", "record-warning", unknownNotice));
-      if (record.error) item.append(node("p", "record-warning", record.error));
+      content.append(heading, node("div", "record-text", record.text), node("p", `record-status ${record.pending ? "pending" : confirmed ? "" : "unknown"}`, status));
+      if (!record.pending && !confirmed) content.append(node("p", "record-warning", unknownNotice));
+      if (record.error) content.append(node("p", "record-warning", record.error));
       const details = node("details", "record-details");
       details.dataset.request = record.requestID;
       details.open = openDetails.has(record.requestID);
@@ -349,7 +451,8 @@
       }
       lines.append(node("p", "", "送达状态：未知。业务 ACK 与协议回执均不作为送达或已读证明。"));
       details.append(lines);
-      item.append(details);
+      content.append(details);
+      item.append(avatar, content);
       fragment.append(item);
     }
     list.replaceChildren(fragment);
@@ -364,6 +467,7 @@
       options.method = method;
       options.headers = { "Content-Type": "application/json" };
       options.body = JSON.stringify(payload);
+      if (path === "/api/messages/read") options.keepalive = true;
     }
     const revision = authRevision;
     const response = await fetch(path, options);
@@ -394,8 +498,14 @@
     drafts.clear();
     warnings.clear();
     sessionPending.clear();
+    readPending.clear();
+    readError = "";
+    window.clearTimeout(typingTimer);
+    typingTimer = null;
+    $("typing-indicator").hidden = true;
     sessionStateUncertain = false;
     nameEdited = false;
+    historyID = null;
     receivedSession = null;
     receivedCursor = 0;
     directorySignature = "";
@@ -413,6 +523,7 @@
     $("target-reason").textContent = "请从左侧选择目标，再核对名称与 ID。";
     $("contact-count").textContent = "0";
     $("group-count").textContent = "0";
+    $("recent-count").textContent = "0";
     $("discovery-label").textContent = "局域网发现 · 0 人在线";
     $("received-notice").hidden = true;
     $("records-empty").hidden = false;
@@ -436,6 +547,7 @@
     $("auth-title").textContent = initialized ? "密码登录" : "首次初始化";
     $("auth-description").textContent = initialized ? "输入密码以访问聊天页面。" : "输入初始化代码并设置登录密码。";
     $("auth-code-field").hidden = initialized;
+    $("auth-password-hint").hidden = initialized;
     $("auth-code").required = !initialized;
     $("auth-submit").textContent = initialized ? "登录" : "初始化";
     keyConfigured = status.api_key_configured;
@@ -468,7 +580,14 @@
   async function submitAuth(event) {
     event.preventDefault();
     if (authBusy) return;
-    const payload = initialized ? { password: $("auth-password").value } : { code: $("auth-code").value, password: $("auth-password").value };
+    const password = $("auth-password").value;
+    if (!initialized && (Array.from(password).length < 8 || Array.from(password).length > 32 ||
+        !/[a-zA-Z]/.test(password) || !/[0-9]/.test(password) ||
+        !Array.from(password).some((c) => c >= "!" && c <= "~" && !/[a-zA-Z0-9]/.test(c)))) {
+      $("auth-notice").textContent = "设置密码须为 8～32 个字符，包含英文字母、数字和 ASCII 特殊字符。";
+      return;
+    }
+    const payload = initialized ? { password } : { code: $("auth-code").value, password };
     // 请求提交后立即清空输入，错误信息不使用后台内容，避免回显密码或初始化代码。
     $("auth-password").value = "";
     $("auth-code").value = "";
@@ -527,15 +646,28 @@
     const revision = sessionRevision;
     refreshPending = (async () => {
       try {
+        const requestedAt = Date.now();
         const response = await api("/api/state");
         // 操作前发出的 GET 不得覆盖操作后的状态；操作期间的快照也不能解除发送限制。
         if (revision !== sessionRevision) return;
         if (!response.ok) throw new Error(response.data.error || `HTTP ${response.status}`);
         const recovered = !reachable;
         state = response.data;
+        typingSnapshotAt = requestedAt;
+        scheduleTypingExpiry();
+        if (historyID !== state.history_id) {
+          records.length = 0;
+          received.length = 0;
+          receivedCursor = 0;
+          unread.clear();
+          historyID = state.history_id;
+        }
+        restoreSentSnapshot();
         receiveSnapshot();
-        // 正文只保存在受预算限制的 received 中，不重复留在状态快照。
+        // 正文只保存在受预算限制的收发记录中，不重复留在状态快照。
         state.messages = [];
+        state.sent_messages = [];
+        void saveRead();
         reachable = true;
         if (!sessionPending.size) sessionStateUncertain = false;
         $("last-refresh").textContent = `${new Date().toLocaleTimeString("zh-CN", { hour12: false })} 更新`;
@@ -674,8 +806,10 @@
     tab.addEventListener("keydown", (event) => {
       if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
       event.preventDefault();
-      const kind = event.key === "Home" ? "user" : event.key === "End" ? "group" : activeKind === "user" ? "group" : "user";
-      switchTab(kind, true);
+      const kinds = Array.from(document.querySelectorAll('[role="tab"]'), (item) => item.dataset.kind);
+      const index = kinds.indexOf(activeKind);
+      const next = event.key === "Home" ? 0 : event.key === "End" ? kinds.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + kinds.length) % kinds.length;
+      switchTab(kinds[next], true);
     });
   }
   $("message-text").addEventListener("input", () => {
@@ -692,6 +826,6 @@
   $("refresh-button").addEventListener("click", () => void refreshState());
   renderComposer();
   void refreshAuth();
-  // 只有 GET 定时刷新。没有 visibilitychange、pagehide、beforeunload 或自动下线逻辑。
+  // 定时读取状态，并保存当前已展示消息的已读标记；不会自动上线、下线或重发聊天。
   window.setInterval(() => void refreshState(), 2000);
 })();

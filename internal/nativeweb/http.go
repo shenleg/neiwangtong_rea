@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"neiwangtong-gateway/internal/nativeproto"
@@ -73,6 +74,24 @@ func NewHandler(manager *Manager, address netip.AddrPort, output io.Writer) (htt
 		}
 		manager.Stop()
 		writeJSON(w, http.StatusAccepted, manager.State())
+	})
+	mux.HandleFunc("POST /api/messages/read", func(w http.ResponseWriter, r *http.Request) {
+		fields, err := decodeObject(w, r, "started_at", "sequence")
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		startedAt, timeErr := time.Parse(time.RFC3339Nano, fields["started_at"])
+		sequence, sequenceErr := strconv.ParseUint(fields["sequence"], 10, 64)
+		if timeErr != nil || sequenceErr != nil || sequence == 0 {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("started_at须为会话时间，sequence须为正整数文本"))
+			return
+		}
+		if err := manager.MarkRead(startedAt, sequence); err != nil {
+			writeError(w, http.StatusConflict, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	})
 	for _, kind := range []string{"user", "group"} {
 		kind := kind

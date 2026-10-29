@@ -79,6 +79,7 @@ type Client struct {
 	incoming             *incomingCache
 	incomingGroup        func(string, string) bool
 	incomingAcks         []uint64
+	typingUntil          time.Time
 	chatOrder            []string
 	chatCursor           int
 	origin               time.Time
@@ -468,6 +469,8 @@ func (c *Client) receive(ctx context.Context, wire []byte) error {
 		}
 		c.result.UnhandledCommands[frame.Command]++
 		return c.emit("unsupported_business_command", frame.Command)
+	case CommandTyping:
+		return c.receiveTyping(wire, frame)
 	case CommandMessageAck, CommandMessageReceipt:
 		return c.receiveChatAck(wire, frame)
 	case CommandGroupInfoPush, CommandGroupUserPush, CommandGroupUserResponse:

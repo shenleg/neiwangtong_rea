@@ -19,6 +19,17 @@ type publicSendResponse struct {
 }
 
 func registerPublicAPI(mux *http.ServeMux, manager *Manager) {
+	mux.HandleFunc("POST /session/restart", func(w http.ResponseWriter, r *http.Request) {
+		if _, err := decodeObject(w, r); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		if err := manager.Restart(); err != nil {
+			writeError(w, http.StatusConflict, err)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, manager.State())
+	})
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		state := manager.State()
 		status, code := "ready", http.StatusOK

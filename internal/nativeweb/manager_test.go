@@ -47,6 +47,7 @@ func (s *fakeSession) Snapshot() nativeproto.ClientSnapshot {
 	defer s.mu.Unlock()
 	result := s.snapshot
 	result.OnlineUserIDs = append([]string(nil), result.OnlineUserIDs...)
+	result.Typing = append([]nativeproto.TypingStatus(nil), result.Typing...)
 	result.Contacts = append([]nativeproto.Contact(nil), result.Contacts...)
 	result.Groups = append([]nativeproto.GroupInfo(nil), result.Groups...)
 	for i := range result.Groups {

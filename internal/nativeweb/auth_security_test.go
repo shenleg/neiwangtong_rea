@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/argon2"
 )
 
 // authRequest 创建不联网的同源认证请求，可附带 Cookie 或 Bearer。
@@ -45,11 +47,11 @@ func TestAuthLifecycle(t *testing.T) {
 	}
 	h := http.HandlerFunc(a.serve)
 	origin := "http://127.0.0.1:8788"
-	w := authRequest(h, "POST", "/auth/setup", `{"code":"wrong","password":"password123"}`, origin, nil, "")
+	w := authRequest(h, "POST", "/auth/setup", `{"code":"wrong","password":"password123!"}`, origin, nil, "")
 	if w.Code != 401 {
 		t.Fatal(w.Code)
 	}
-	body, _ := json.Marshal(map[string]string{"code": code, "password": "password123"})
+	body, _ := json.Marshal(map[string]string{"code": code, "password": "password123!"})
 	w = authRequest(h, "POST", "/auth/setup", string(body), origin, nil, "")
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body)
@@ -86,7 +88,7 @@ func TestAuthLifecycle(t *testing.T) {
 	if !strings.Contains(w.Body.String(), `"authenticated":false`) {
 		t.Fatal(w.Body)
 	}
-	w = authRequest(h2, "POST", "/auth/login", `{"password":"password123"}`, origin, nil, "")
+	w = authRequest(h2, "POST", "/auth/login", `{"password":"password123!"}`, origin, nil, "")
 	if w.Code != 200 {
 		t.Fatal(w.Code)
 	}
@@ -119,7 +121,80 @@ func TestAuthLifecycle(t *testing.T) {
 	}
 }
 
-// TestAuthPasswordRuleHint 验证认证页面展示密码字节长度规则并将提示关联到输入框。
+// TestSetupPasswordPolicy 验证初始化密码的长度、字符种类及 Unicode 计数。
+func TestSetupPasswordPolicy(t *testing.T) {
+	cases := []struct {
+		name, password string
+		valid          bool
+	}{
+		{"七字符", "abc12!x", false},
+		{"八字符", "abc123!x", true},
+		{"三十二字符", "a1!" + strings.Repeat("x", 29), true},
+		{"三十三字符", "a1!" + strings.Repeat("x", 30), false},
+		{"缺字母", "1234567!", false},
+		{"缺数字", "abcdefg!", false},
+		{"缺特殊字符", "abcdef12", false},
+		{"空格不算特殊字符", "abc1234 ", false},
+		{"非ASCII符号不算特殊字符", "abc1234！", false},
+		{"中文及表情按字符计数", "a1!中文😀甲乙", true},
+		{"多字节不足八字符", "a1!中文😀甲", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			a, err := newAuth(t.TempDir(), &output)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, err := json.Marshal(map[string]string{"code": a.setup, "password": tc.password})
+			if err != nil {
+				t.Fatal(err)
+			}
+			w := authRequest(http.HandlerFunc(a.serve), "POST", "/auth/setup", string(body), "http://127.0.0.1:8788", nil, "")
+			want := http.StatusBadRequest
+			if tc.valid {
+				want = http.StatusOK
+			}
+			if w.Code != want {
+				t.Fatalf("状态码 %d，期望 %d：%s", w.Code, want, w.Body)
+			}
+			if !tc.valid && a.creds != nil {
+				t.Fatal("无效密码不应创建凭据")
+			}
+		})
+	}
+}
+
+// TestLegacyPasswordLogin 验证旧规则下的密码重启后仍可登录。
+func TestLegacyPasswordLogin(t *testing.T) {
+	dir := t.TempDir()
+	a, err := newAuth(dir, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(map[string]string{"code": a.setup, "password": "newpass1!"})
+	w := authRequest(http.HandlerFunc(a.serve), "POST", "/auth/setup", string(body), "http://127.0.0.1:8788", nil, "")
+	if w.Code != http.StatusOK {
+		t.Fatal(w.Code, w.Body)
+	}
+	legacy := strings.Repeat("旧密码", 12)
+	c := *a.creds
+	c.Password = argon2.IDKey([]byte(legacy), c.Salt, 3, 64*1024, 1, 32)
+	if err := a.save(c); err != nil {
+		t.Fatal(err)
+	}
+	a, err = newAuth(dir, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = json.Marshal(map[string]string{"password": legacy})
+	w = authRequest(http.HandlerFunc(a.serve), "POST", "/auth/login", string(body), "http://127.0.0.1:8788", nil, "")
+	if w.Code != http.StatusOK {
+		t.Fatal(w.Code, w.Body)
+	}
+}
+
+// TestAuthPasswordRuleHint 验证认证页面展示密码规则并将提示关联到输入框。
 func TestAuthPasswordRuleHint(t *testing.T) {
 	manager, _ := testManager(t)
 	h, err := NewHandler(manager, netip.MustParseAddrPort("127.0.0.1:8788"), &bytes.Buffer{})
@@ -130,7 +205,7 @@ func TestAuthPasswordRuleHint(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("认证页面返回 %d", w.Code)
 	}
-	for _, text := range []string{`aria-describedby="auth-password-hint"`, `id="auth-password-hint"`, "8～1024 个 UTF-8 字节", "不要求大小写、数字或特殊符号"} {
+	for _, text := range []string{`aria-describedby="auth-password-hint"`, `id="auth-password-hint"`, "8～32 个字符", "英文字母、数字和 ASCII 特殊字符"} {
 		if !strings.Contains(w.Body.String(), text) {
 			t.Errorf("认证页面缺少密码规则提示 %q", text)
 		}
@@ -154,7 +229,7 @@ func TestAuthProtection(t *testing.T) {
 		t.Fatal(w.Code)
 	}
 	code := strings.TrimSpace(strings.TrimPrefix(out.String(), "初始化码："))
-	b, _ := json.Marshal(map[string]string{"code": code, "password": "password123"})
+	b, _ := json.Marshal(map[string]string{"code": code, "password": "password123!"})
 	w := authRequest(h, "POST", "/auth/setup", string(b), "", nil, "")
 	if w.Code != 403 {
 		t.Fatal(w.Code)

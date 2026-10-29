@@ -18,7 +18,7 @@
       <p id="auth-description">请稍候。</p>
       <form id="auth-form" autocomplete="off" hidden>
         <div id="auth-code-field"><label for="auth-code">初始化代码</label><input id="auth-code" type="text" autocomplete="off" spellcheck="false"></div>
-        <div><label for="auth-password">密码</label><input id="auth-password" type="password" autocomplete="off" aria-describedby="auth-password-hint" required><p id="auth-password-hint" class="auth-password-hint">密码长度为 8～1024 个 UTF-8 字节（英文通常占 1 字节，汉字通常占 3 字节）；不要求大小写、数字或特殊符号。</p></div>
+        <div><label for="auth-password">密码</label><input id="auth-password" type="password" autocomplete="off" aria-describedby="auth-password-hint" required><p id="auth-password-hint" class="auth-password-hint">设置密码须为 8～32 个字符，包含英文字母、数字和 ASCII 特殊字符（例如 !、@、#）；其他字符也可使用。</p></div>
         <button id="auth-submit" class="button primary" type="submit">登录</button>
       </form>
       <button id="auth-retry" class="button secondary" type="button" hidden>重新读取状态</button>
@@ -41,6 +41,7 @@
         <div class="directory-tabs" role="tablist" aria-label="通讯录分类">
           <button id="tab-users" type="button" role="tab" aria-selected="true" aria-controls="directory-panel" data-kind="user">联系人 <span id="contact-count">0</span></button>
           <button id="tab-groups" type="button" role="tab" aria-selected="false" aria-controls="directory-panel" tabindex="-1" data-kind="group">已加入群 <span id="group-count">0</span></button>
+          <button id="tab-recent" type="button" role="tab" aria-selected="false" aria-controls="directory-panel" aria-label="最近联系人" tabindex="-1" data-kind="recent">最近联系人 <span id="recent-count">0</span></button>
         </div>
         <div class="search-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m16 16 4 4"></path></svg><label class="sr-only" for="directory-search">搜索名称或 ID</label><input id="directory-search" type="search" placeholder="搜索名称或 ID" autocomplete="off" spellcheck="false"></div>
         <div id="directory-panel" class="directory-results" role="tabpanel" aria-labelledby="tab-users" tabindex="0"><ul id="target-list" class="target-list"></ul><p id="directory-empty" class="directory-empty">正在读取通讯录…</p></div>
@@ -50,7 +51,7 @@
       <main class="conversation panel" aria-labelledby="target-name">
         <header class="conversation-heading">
           <span id="target-avatar" class="target-avatar large" aria-hidden="true">↗</span>
-          <div class="target-heading-text"><p id="target-kind" class="eyebrow">新的沟通，从这里开始</p><h2 id="target-name">选择一位联系人</h2><p id="target-id" class="mono target-id">或切换到已加入群</p></div>
+          <div class="target-heading-text"><p id="target-kind" class="eyebrow">新的沟通，从这里开始</p><h2 id="target-name">选择一位联系人</h2><p id="target-id" class="mono target-id">或切换到已加入群</p><p id="typing-indicator" class="typing-indicator" role="status" aria-live="polite" hidden>对方正在输入…</p></div>
           <span id="target-availability" class="availability">未选择目标</span>
         </header>
         <p id="target-reason" class="target-reason">请从左侧选择目标，再核对名称与 ID。</p>
@@ -61,7 +62,7 @@
             <div id="records-empty" class="records-empty"><span class="empty-symbol" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M10 11h28v21H22l-9 7v-7h-3z"></path><path d="M17 19h14M17 25h9"></path></svg></span><h3>留一条清楚的消息</h3><p>选好目标，查看临时消息或写下想说的话。</p></div>
             <ol id="message-records" class="message-records"></ol>
           </div>
-          <p class="records-footnote">传输确认不代表送达或已读；收发消息仅临时保留，后台接收缓冲有限，不读取历史。</p>
+          <p class="records-footnote">传输确认不代表送达或已读；收发共保留最近 128 条 / 1MiB，刷新保留，服务重启清空。</p>
         </section>
         <form id="composer" class="composer">
           <div class="composer-heading"><label for="message-text">消息正文</label><span id="byte-count" class="byte-count">0 / 4096 字节</span></div>

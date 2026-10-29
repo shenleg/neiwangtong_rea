@@ -22,6 +22,25 @@
     }
   ],
   "paths": {
+    "/session/restart": {
+      "post": {
+        "tags": ["原生公开接口"],
+        "operationId": "restartSession",
+        "summary": "使用当前身份与名称重新上线",
+        "description": "离线或失败时启动新会话；在线或启动中先请求正常下线，等待已受理发送及记录关闭后启动。退出中或关闭时返回409；重复请求不排队。停止或关闭会取消待执行的重新上线，旧会话清理失败时不启动。202仅表示受理，使用health查询阶段与错误；新会话重新开始会话内请求去重，但保留本进程内的临时收发记录和网页已读标记，不补发消息。此操作会连接配置的子网。",
+        "requestBody": {"$ref": "#/components/requestBodies/EmptyObject"},
+        "responses": {
+          "202": {
+            "description": "已受理，返回当前后台状态。",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/State"}}}
+          },
+          "400": {"$ref": "#/components/responses/InvalidJSON"},
+          "403": {"$ref": "#/components/responses/InvalidOrigin"},
+          "409": {"description": "会话正在退出或程序关闭，或启动前记录创建等操作失败。", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "415": {"$ref": "#/components/responses/UnsupportedContentType"}
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -389,7 +408,7 @@
         ],
         "operationId": "getPageState",
         "summary": "读取后台会话与网页快照",
-        "description": "只读，不上线、不创建连接。events 为最近至多128条无正文阶段记录；messages为本次后台会话临时接收的最近消息，最多128条且正文合计不超过1MiB，不写入磁盘。sequence仅在本次会话内用于轮询去重；received_dropped表示因缓冲预算淘汰的条数。重新上线或关闭后台进程后清空。",
+        "description": "只读，不上线、不创建连接。events 为最近至多128条无正文阶段记录；messages和sent_messages为本进程临时收发记录，共享128条及1MiB正文预算，不写入磁盘；入站含网页已展示标记read。sequence在进程内递增用于轮询去重；received_dropped表示被淘汰的入站条数。刷新、重新登录或重新上线保留，进程退出清空。",
         "responses": {
           "200": {
             "description": "当前后台状态。",
@@ -541,6 +560,15 @@
             "$ref": "#/components/responses/UnsupportedContentType"
           }
         }
+      }
+    },
+    "/api/messages/read": {
+      "post": {
+        "tags": ["网页接口"],
+        "summary": "保存网页已读标记",
+        "description": "仅标记已展示会话截至指定接收序号的消息，不影响其他目标或更新的消息；不发送协议已读回执。标记仅存在服务端内存，刷新或重新上线保留，进程重启清空。",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "additionalProperties": false, "required": ["started_at", "sequence"], "properties": {"started_at": {"type": "string", "format": "date-time"}, "sequence": {"type": "string", "pattern": "^[1-9][0-9]*$", "description": "已显示消息的接收序号，以十进制字符串提交。"}}}}}},
+        "responses": {"204": {"description": "已保存或消息已因预算淘汰；重复标记无额外作用。"}, "400": {"description": "请求字段或格式非法。"}, "401": {"description": "未认证。"}, "403": {"description": "来源不符。"}, "409": {"description": "会话已改变或序号尚未接收。"}, "415": {"description": "请求不是JSON。"}}
       }
     },
     "/api/messages/user": {
@@ -1597,9 +1625,13 @@
           "groups",
           "events",
           "max_text_bytes",
+          "recent_conversations",
           "messages",
           "received_total",
-          "received_dropped"
+          "received_dropped",
+          "history_id",
+          "typing",
+          "sent_messages"
         ],
         "properties": {
           "phase": {
@@ -1664,18 +1696,26 @@
             ],
             "description": "发送正文最大 UTF-8 字节数，不是字符数。"
           },
+          "recent_conversations": {
+            "type": "array",
+            "items": {"$ref": "#/components/schemas/RecentConversation"},
+            "description": "发生过发送提交或接收的单聊及群聊，按最近活动倒序，按kind/id去重；仅保存目标资料和本机时间，不含正文。重新打开页面和重新上线保留，进程重启清空，不写入磁盘。"
+          },
+          "typing": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["user_id", "remaining_ms"], "properties": {"user_id": {"type": "string"}, "remaining_ms": {"type": "integer", "minimum": 1, "maximum": 5000}}}, "description": "已READY且仍在线联系人发来的1008输入通知的剩余毫秒数；最后通知后5000ms失效，不代表消息或已读，不包含群输入状态。"},
+          "history_id": {"type": "string", "description": "本进程内的收发缓冲标识；重新上线不变，服务重启更换。"},
+          "sent_messages": {"type": "array", "maxItems": 128, "items": {"$ref": "#/components/schemas/SentMessage"}, "description": "本进程内最近受理的发送，包含正文、待完成状态及提交结果，与入站messages共用128条/1MiB预算；刷新恢复，不自动重发。"},
           "messages": {
             "type": "array",
             "maxItems": 128,
             "items": {
               "$ref": "#/components/schemas/ReceivedMessage"
             },
-            "description": "当前后台会话的临时入站消息，按sequence递增；正文合计最多1MiB，不是持久聊天历史。"
+            "description": "本进程的临时入站消息，按sequence递增；与sent_messages共用正文预算，不是持久聊天历史。"
           },
           "received_total": {
             "type": "integer",
             "minimum": 0,
-            "description": "本次后台会话累计接受的入站消息条数。"
+            "description": "本进程累计接受的入站消息条数，重新上线不重置。"
           },
           "received_dropped": {
             "type": "integer",
@@ -1684,12 +1724,36 @@
           }
         }
       },
+      "RecentConversation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "id", "name", "last_activity_at"],
+        "properties": {
+          "kind": {"type": "string", "enum": ["user", "group"], "description": "单聊或群聊；群消息不额外增加发送者的单聊记录。"},
+          "id": {"type": "string", "description": "原始UserID或GroupID，不表示目标当前可发送。"},
+          "name": {"type": "string", "description": "当前或最后已知的目标名称；无名称时显示原始ID。"},
+          "last_activity_at": {"type": "string", "format": "date-time", "description": "本机最近一次发送提交或接收的UTC时间；重复查询原请求不更新时间。"}
+        }
+      },
+      "SentMessage": {
+        "type": "object", "additionalProperties": false,
+        "required": ["started_at", "sent_at", "target_kind", "target_id", "target_name", "text", "pending", "response"],
+        "properties": {
+          "started_at": {"type": "string", "format": "date-time", "description": "发送所属协议会话，避免重新上线后相同request_id混淆。"},
+          "sent_at": {"type": "string", "format": "date-time"},
+          "target_kind": {"type": "string", "enum": ["user", "group"]},
+          "target_id": {"type": "string"}, "target_name": {"type": "string"}, "text": {"type": "string"},
+          "pending": {"type": "boolean", "description": "后台尚未完成；刷新页面不取消或重新发送。"},
+          "response": {"$ref": "#/components/schemas/MessageResponse"}
+        }
+      },
       "ReceivedMessage": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["sequence", "received_at", "command", "message_id", "sender_id", "sender_name", "group_id", "text"],
+        "required": ["sequence", "received_at", "read", "command", "message_id", "sender_id", "sender_name", "group_id", "text"],
         "properties": {
-          "sequence": {"type": "integer", "minimum": 1, "description": "当前后台会话的接收序号，与协议MSG_ID无关；重新上线后重新计数。"},
+          "sequence": {"type": "integer", "minimum": 1, "description": "本进程的接收序号，与协议MSG_ID无关；重新上线不重新计数。"},
+          "read": {"type": "boolean", "description": "网页已展示标记，跨刷新保留；不是对端协议已读回执。"},
           "received_at": {"type": "string", "format": "date-time", "description": "本机接受消息的UTC时间，不是MSG_TIME或对端发送时间。"},
           "command": {"type": "integer", "enum": [1004, 3011]},
           "message_id": {"type": "string", "description": "发送对端的原始十进制消息编号；不同对端可使用相同编号。"},
